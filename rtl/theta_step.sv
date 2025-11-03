@@ -5,11 +5,9 @@
  * NOTE: Purely combinational so far. Can be pipelined for higher clock speed if needed.
  */
 
-module theta_step #(
-    parameter integer LANE_SIZE     = 64,
-    parameter integer COL_SIZE      = 5,
-    parameter integer ROW_SIZE      = 5;
-)(
+import keccak_pkg::*;
+
+module theta_step (
     input   [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_in,
     output  [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_out
 );

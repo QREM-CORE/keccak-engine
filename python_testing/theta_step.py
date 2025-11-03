@@ -45,8 +45,3 @@ state[0][0] = 0x1  # single bit
 after_theta = keccak_theta(state)
 
 print_state_fips(after_theta)
-
-# Print one lane to inspect
-# for y in range(5):
-#     print([hex(after_theta[x][y]) for x in range(5)])
-
