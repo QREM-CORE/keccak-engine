@@ -55,10 +55,11 @@ jobs:
           # Set the environment path for subsequent steps
           echo "$INSTALL_DIR/modelsim_ase/bin" >> $GITHUB_PATH
 
-      - name: Verify Installation and Run Simulation
+      - name: Verify Installation
         run: |
           vsim -version
-          # Add your ModelSim simulation commands here
-          # vlib work
-          # vcom my_design.vhd
-          # vsim -c -do "run_test.tcl" work.testbench
+
+      - name: Run Simulation
+        run: |
+          source env.sh
+          make
