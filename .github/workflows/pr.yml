@@ -1,4 +1,4 @@
-name: VSIM Build
+name: PR - Verilog Build and Linter
 
 on:
   push:
