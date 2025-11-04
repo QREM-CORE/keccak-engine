@@ -1,5 +1,5 @@
 
-`include "keccak_constants.svh"
+import keccak_pkg::*;
 
 module keccak_core (
     input clk,
