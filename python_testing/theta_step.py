@@ -28,15 +28,15 @@ def keccak_theta(state):
 def print_state_fips(state):
     """
     Prints the 5x5 Keccak state with (0,0) at the center (bottom middle),
-    as specified by FIPS 202.
+    as specified by FIPS 202, using 16 hex digits per lane.
     """
     print("Keccak state (FIPS 202 coordinates):\n")
     for y in range(4, -1, -1):  # print y = 4 down to 0 (top to bottom)
         row = []
         for x in range(5):
-            row.append(f"{state[x][y]:#04x}")
+            row.append(f"0x{state[x][y]:016x}")
         print(f"y={y}: " + "  ".join(row))
-    print("     x=0   x=1   x=2   x=3   x=4\n")
+    print("     x=0                 x=1                 x=2                 x=3                 x=4\n")
 
 # Example: initialize with 1600-bit zero state, except one bit
 state = [[0]*5 for _ in range(5)]
