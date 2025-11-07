@@ -32,7 +32,8 @@ module theta_step_tb();
             end
             $display("");
         end
-        $display("     x=0                 x=1                 x=2                 x=3                 x=4\n");
+        $display($sformatf("%s%s",  "     x=0                 x=1                 ",
+                                    "x=2                 x=3                 x=4\n"));
     endtask
 
     // ==========================================================

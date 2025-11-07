@@ -15,12 +15,12 @@ module pi_step (
 
     genvar x,y;
     generate
-        for (x=0; x<ROW_SIZE; x=x+1) begin
-            for (y=0; y<COL_SIZE; y=y+1) begin
+        for (x=0; x<ROW_SIZE; x=x+1) begin : g_pi_x_col
+            for (y=0; y<COL_SIZE; y=y+1) begin : g_rho_y_row
                 // Transformation as specified by FIPS202 3.2.3
-                localparam int src_x = (x + 3*y) % 5;
-                localparam int src_y = x;
-                assign permuted[x][y] = state_array_in[src_x][src_y];
+                localparam int SRC_X = (x + 3*y) % 5;
+                localparam int SRC_Y = x;
+                assign permuted[x][y] = state_array_in[SRC_X][SRC_Y];
             end
         end
     endgenerate
