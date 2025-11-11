@@ -16,8 +16,11 @@ def keccak_chi(state):
     return result
 
 
-# Keep the same print_state_fips function from your example
 def print_state_fips(state):
+    """
+    Prints the 5x5 Keccak state with (0,0) at the center (bottom middle),
+    as specified by FIPS 202, using 16 hex digits per lane.
+    """
     print("Keccak state (FIPS 202 coordinates):\n")
     for y in range(4, -1, -1):
         row = []
@@ -45,7 +48,13 @@ print("After χ step: All lanes set to 0x1:")
 print_state_fips(after_chi)
 
 # Sequential pattern test
-state = [[x + 5*y for y in range(5)] for x in range(5)]
+state = [[0]*5 for _ in range(5)]
+count = 0
+for x in range(5):
+    for y in range(5):
+        state[x][y] = count
+        count += 1
+
 print("==== Initial State (Sequential Pattern) ====")
 print_state_fips(state)
 after_chi = keccak_chi(state)
