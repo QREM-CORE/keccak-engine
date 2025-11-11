@@ -22,8 +22,8 @@ module keccak_core (
      */
     reg [4:0][4:0][63:0] state_array;
 
-    // Each output requires 24 rounds of permutations (θ-theta, ρ, π, χ, ι)
-    reg [4:0] round;
+    // Each output requires 24 rounds of permutations (θ, ρ, π, χ, ι)
+    reg [ROUND_INDEX_SIZE-1:0] round_index;
 
     // Control enables
     reg en_theta, en_rho, en_pi, en_chi, en_iota;
