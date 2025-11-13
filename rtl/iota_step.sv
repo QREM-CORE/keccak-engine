@@ -3,7 +3,7 @@
  * Author: Kiet Le
  * Description: - ι (iota) step mapping is responsible for introducing round-dependent
  *                constants into the state to break symmetry between rounds.
- *              - Based off of FIPS202 Section 3.2.5
+ *              - Based on FIPS202 Section 3.2.5
  *              - We only input, modify, and output the (0, 0) 64-bit lane
  * NOTE: Purely combinational so far. Can be pipelined for higher clock speed if needed.
  */
@@ -11,23 +11,24 @@
 import keccak_pkg::*;
 
 module iota_step (
-    input   logic   [LANE_SIZE-1:0]         lane00_in, // Only inputing the (0, 0) lane (64 bits)
-    input   logic   [ROUND_INDEX_SIZE-1:0]  i_r, // Round Index 0-24
-
-    output  logic   [LANE_SIZE-1:0]         lane00_out
+    input   logic   [LANE_SIZE-1:0]         lane00_in, // Only inputting the (0, 0) lane (64 bits)
+    input   logic   [ROUND_INDEX_SIZE-1:0]  i_r, // Current round index (0-23)
+    output  logic   [LANE_SIZE-1:0]         lane00_out // (0,0) lane output after XOR with round constant
 );
     /* ============================================================
      * Step 1: Get Round Constant using input Round Index
      * ============================================================
      *
-     * The 64 bit round index only has 7 possible non-zero bits at index positions:
-     * (0, 1, 3, 7, 15, 31, 63) -> 2^j - 1 for j=0..6
+     * A keccak permutation has 24 rounds, so we have 24 different round constants.
+     * The 64-bit round constant only has 7 possible non-zero bits at index positions:
+     * (0, 1, 3, 7, 15, 31, 63) == 2^j - 1 for j=0..6
+     * So we will only store the 7 bits that can be non-zero.
      *
      * The following array is as such:
      *  - Each row corresponds to each round 0..23
      *  - Each column corresponds to one of the 7 bit positions
      */
-    localparam logic RCs [MAX_ROUNDS][L_SIZE] = '{
+    localparam logic ROUND_CONSTANTS [MAX_ROUNDS][L_SIZE] = '{
        //  Bit-0    Bit-1    Bit-3    Bit-7    Bit-15    Bit 31    Bit-63
         '{ 1,       0,       0,       0,       0,        0,        0      }, // Round 0
         '{ 0,       1,       0,       1,       1,        0,        0      }, // Round 1
@@ -56,15 +57,17 @@ module iota_step (
     };
 
     // Bit position mapping: 2^j - 1 for j = 0..6
-    localparam int bit_mapping [L_SIZE] = '{0, 1, 3, 7, 15, 31, 63};
+    localparam int BITMAPPING [L_SIZE] = '{0, 1, 3, 7, 15, 31, 63};
 
     // ============================================================
-    // Step 2: XOR corresponding bits for lane (0,0)
+    // Step 2: XOR corresponding round constants into lane (0,0)
     // ============================================================
     always_comb begin
-        lane00_out = lane00_in; // default assignment
+        lane00_out = lane00_in; // Default assignment to avoid latches
+
+        // Iterate through the 7 pre-defined bit positions for this round
         for (int j = 0; j<L_SIZE; j=j+1) begin
-                lane00_out[bit_mapping[j]] = lane00_in[bit_mapping[j]] ^ RCs[i_r][j];
+                lane00_out[BITMAPPING[j]] = lane00_in[BITMAPPING[j]] ^ ROUND_CONSTANTS[i_r][j];
         end
     end
 

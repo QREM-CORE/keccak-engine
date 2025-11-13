@@ -25,9 +25,9 @@ module iota_step_tb();
     // ==========================================================
     task automatic print_result(
         input int round_idx,
-        input logic [63:0] lane_in,
-        input logic [63:0] lane_out,
-        input logic [63:0] expected_rc
+        input logic [LANE_SIZE-1:0] lane_in,
+        input logic [LANE_SIZE-1:0] lane_out,
+        input logic [LANE_SIZE-1:0] expected_rc
     );
         $display("===============================================");
         $display(" Round %0d | Input Lane (0,0): 0x%016h", round_idx, lane_in);
@@ -35,20 +35,20 @@ module iota_step_tb();
         $display(" Lane (0,0) After IOTA Step: 0x%016h", lane_out);
         $display(" Expected XOR Result       : 0x%016h", lane_in ^ expected_rc);
         if (lane_out === (lane_in ^ expected_rc))
-            $display(" ✅ PASS: Iota output matches expected result\n");
+            $display("PASS: Iota output matches expected result\n");
         else
-            $display(" ❌ FAIL: Iota output mismatch\n");
+            $display("FAIL: Iota output mismatch\n");
     endtask
 
     // ==========================================================
     // Main Test Procedure
     // ==========================================================
     initial begin
-        // Precomputed expected round constants (from Python script)
+        // Precomputed expected round constants
         // RC[0] = 0x0000000000000001
         // RC[1] = 0x0000000000008082
         // RC[23] = 0x8000000080008008
-        logic [63:0] RCs [0:23] = '{
+        logic [LANE_SIZE-1:0] RCs [MAX_ROUNDS] = '{
             64'h0000000000000001, 64'h0000000000008082, 64'h800000000000808A,
             64'h8000000080008000, 64'h000000000000808B, 64'h0000000080000001,
             64'h8000000080008081, 64'h8000000000008009, 64'h000000000000008A,
