@@ -8,8 +8,8 @@
 import keccak_pkg::*;
 
 module theta_step (
-    input   [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_in,
-    output  [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_out
+    input   [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
+    output  [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
 );
     // Column Parity Wires (Algorithm 1: C matrix in FIPS202)
     wire [4:0][LANE_SIZE-1:0] C;
@@ -23,11 +23,11 @@ module theta_step (
     genvar x;
     generate
         for (x = 0; x<ROW_SIZE; x = x + 1) begin : compute_C
-            assign C[x] =       state_array_in[x][0] ^
-                                state_array_in[x][1] ^
-                                state_array_in[x][2] ^
-                                state_array_in[x][3] ^
-                                state_array_in[x][4];
+            assign C[x] =       state_array_i[x][0] ^
+                                state_array_i[x][1] ^
+                                state_array_i[x][2] ^
+                                state_array_i[x][3] ^
+                                state_array_i[x][4];
         end
     endgenerate
 
@@ -57,7 +57,7 @@ module theta_step (
     generate
         for (x = 0; x<ROW_SIZE; x = x + 1) begin
             for (y = 0; y<COL_SIZE; y = y + 1) begin
-                assign state_array_out[x][y] = state_array_in[x][y] ^ D[x];
+                assign state_array_o[x][y] = state_array_i[x][y] ^ D[x];
             end
         end
     endgenerate

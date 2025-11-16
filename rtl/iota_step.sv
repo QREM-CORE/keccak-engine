@@ -11,9 +11,9 @@
 import keccak_pkg::*;
 
 module iota_step (
-    input  logic [LANE_SIZE-1:0]        lane00_in,  // Only inputting the (0, 0) lane (64 bits)
-    input  logic [ROUND_INDEX_SIZE-1:0] i_r,        // Current round index (0-23)
-    output logic [LANE_SIZE-1:0]        lane00_out  // (0,0) lane after XOR with round constant
+    input  logic [LANE_SIZE-1:0]        lane00_i,       // Only inputting the (0, 0) lane (64 bits)
+    input  logic [ROUND_INDEX_SIZE-1:0] round_index_i,  // Current round index (0-23)
+    output logic [LANE_SIZE-1:0]        lane00_o        // (0,0) lane after XOR with round constant
 );
     /* ============================================================
      * Step 1: Get Round Constant using input Round Index
@@ -63,11 +63,11 @@ module iota_step (
     // Step 2: XOR corresponding round constants into lane (0,0)
     // ============================================================
     always_comb begin
-        lane00_out = lane00_in; // Default assignment to avoid latches
+        lane00_o = lane00_i; // Default assignment to avoid latches
 
         // Iterate through the 7 pre-defined bit positions for this round
         for (int j = 0; j<L_SIZE; j=j+1) begin
-                lane00_out[BITMAPPING[j]] = lane00_in[BITMAPPING[j]] ^ ROUNDCONSTANTS[i_r][j];
+                lane00_o[BITMAPPING[j]] = lane00_i[BITMAPPING[j]] ^ ROUNDCONSTANTS[i_r][j];
         end
     end
 
