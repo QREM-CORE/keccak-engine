@@ -16,33 +16,33 @@ def _calculate_rc(t):
     Calculates the single-bit output of the rc(t) function (Algorithm 5).
 
     This is a Linear Feedback Shift Register (LFSR).
-    
+
     t: integer input
     Returns: a single bit (1 or 0)
     """
     # Step 1: If t mod 255 == 0, return 1.
     if t % 255 == 0:
         return 1
-    
+
     # Step 2: Let R = 10000000 (binary)
     R = 0x80  # 8-bit integer
-    
+
     # Step 3: For i from 1 to t mod 255
     t_mod_255 = t % 255
     for _ in range(t_mod_255):
         # R is an 8-bit register [r0, r1, r2, r3, r4, r5, r6, r7]
         # We need to implement the 9-bit intermediate state
-        
+
         # Get the 8 bits of R
         R_list = [(R >> (7-i)) & 1 for i in range(8)]
-        
+
         # a. R = 0 || R (R is now 9 bits)
         # R9 = [0, r0, r1, r2, r3, r4, r5, r6, r7]
         R9 = [0] + R_list
-        
+
         # The feedback bit is R[8] (which is the old r7)
         feedback_bit = R9[8]
-        
+
         # b. R[0] = R[0] XOR R[8]
         R9[0] ^= feedback_bit
         # c. R[4] = R[4] XOR R[8]
@@ -51,10 +51,10 @@ def _calculate_rc(t):
         R9[5] ^= feedback_bit
         # e. R[6] = R[6] XOR R[8]
         R9[6] ^= feedback_bit
-        
+
         # f. R = Trunc8(R) (take the first 8 bits, R[0]...R[7])
         R_trunc = R9[0:8]
-        
+
         # Convert R_trunc back to an 8-bit integer for the next loop
         R = 0
         for bit in R_trunc:
@@ -67,24 +67,24 @@ def _get_round_constant(i_r):
     """
     Calculates the 64-bit round constant (RC) for round i_r.
     Implements Steps 2 and 3 from Algorithm 6.
-    
+
     i_r: The round index (0-23)
     Returns: A 64-bit integer round constant
     """
     # For Keccak-f[1600], w = 64, so l = log2(w) = 6
     l = 6
-    
+
     # Step 2: Let RC = 0
     RC = 0
-    
+
     # Step 3: For j from 0 to l
     for j in range(l + 1):  # j goes from 0 to 6
         # Calculate t = j + 7*i_r
         t = j + (7 * i_r)
-        
+
         # Get the bit from Algorithm 5
         bit = _calculate_rc(t)
-        
+
         # If the bit is 1, set the corresponding bit in RC
         if bit == 1:
             # The position is (2^j - 1)
@@ -96,10 +96,10 @@ def _get_round_constant(i_r):
             # j=5 -> pos = 31
             # j=6 -> pos = 63
             pos = (1 << j) - 1
-            
+
             # Set the bit at `pos` in the RC integer
             RC |= (1 << pos)
-            
+
     return RC & MASK_64
 
 
@@ -107,7 +107,7 @@ def keccak_iota(state, round_index):
     """
     Perform the ι (iota) step mapping (Algorithm 6) on a 5x5 Keccak state.
     This XORs a dynamically calculated round constant (RC) into lane (0,0).
-    
+
     state: list of 5 lists, each with 5 64-bit integers.
     round_index: The round number (i_r), from 0 to 23.
     Returns a new 5x5 list after ι step.
@@ -119,13 +119,13 @@ def keccak_iota(state, round_index):
     # Step 2-3: Calculate the 64-bit Round Constant (RC)
     if not (0 <= round_index < 24):
         raise ValueError("Round index must be between 0 and 23 for Keccak-f[1600].")
-    
+
     RC = _get_round_constant(round_index)
-    
+
     # Step 4: A'[0, 0, z] = A'[0, 0, z] ⊕ RC[z]
     # This is a lane-wise XOR on lane (0,0).
     A_prime[0][0] = (A_prime[0][0] ^ RC) & MASK_64
-    
+
     # Step 5: Return A'
     return A_prime
 

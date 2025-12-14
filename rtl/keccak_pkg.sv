@@ -5,7 +5,7 @@ package keccak_pkg;
     // Keccak Structure
     parameter int DWIDTH = 256; // Input data is 32 bytes
     parameter int DATA_BYTE_NUM = DATA_SIZE/8;
-    parameter int VALID_BYTES_WIDTH = $clog2(DATA_BIT_WIDTH*BYTE_SIZE);
+    parameter int KEEP_WIDTH = DWIDTH/8; // 1 bit for every data byte
     parameter int MAX_OUTPUT_DWIDTH = 2*VALID_BYTES_BIT_WIDTH;
 
     // Different Keccak Modes
@@ -17,6 +17,21 @@ package keccak_pkg;
     } keccak_mode;
     parameter int MODE_NUM = 4;
     parameter int MODE_SEL_WIDTH = $clog2(MODE_NUM);
+
+    // Setup Parameters
+    parameter int CAPACITY_WIDTH = 11;
+    parameter int RATE_WIDTH = 11;
+    parameter int SUFFIX_WIDTH = 4;
+    parameter int SUFFIX_LEN_WIDTH = 3;
+
+    /* Carry Over Width
+     * Need to handle case of rate portion being full.
+     * 1344 % 256 = 64, 1088 % 256 = 64, and 576 % 256 = 64.
+     * This means that carry over of 256-64=192
+     */
+    parameter int CARRY_WIDTH = 192;
+    parameter int CARRY_LEN_WIDTH = $clog2(CARRY_WIDTH/BYTE_SIZE);
+    parameter int CARRY_KEEP_WIDTH = CARRY_WIDTH/8;
 
     // Different step selector options
     typedef enum logic {

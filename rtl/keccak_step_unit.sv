@@ -18,9 +18,10 @@ module keccak_step_unit (
     rho_step   u_rho   (.state_in(state_array_i), .state_out(rho_out));
     pi_step    u_pi    (.state_in(state_array_i), .state_out(pi_out));
     chi_step   u_chi   (.state_in(state_array_i), .state_out(chi_out));
-    iota_step  u_iota  (.state_in(state_array_i),
+    // TODO: FIX THIS IOTA LOGIC
+    iota_step  u_iota  (.lane00_i(state_array_i[0][0]),
                         .round_index_i(round_index),
-                        .state_out(iota_out));
+                        .lane00_o(iota_out));
 
     // Multiplexor for step mappings
     always @(*) begin
