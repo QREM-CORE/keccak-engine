@@ -7,6 +7,8 @@ package keccak_pkg;
     parameter int DATA_BYTE_NUM = DATA_SIZE/8;
     parameter int KEEP_WIDTH = DWIDTH/8; // 1 bit for every data byte
     parameter int MAX_OUTPUT_DWIDTH = 2*VALID_BYTES_BIT_WIDTH;
+    parameter int X_WIDTH = $clog2(ROW_SIZE);
+    parameter int Y_WIDTH = $clog2(COL_SIZE);
 
     // Different Keccak Modes
     typedef enum logic {
@@ -32,6 +34,8 @@ package keccak_pkg;
     parameter int CARRY_WIDTH = 192;
     parameter int CARRY_LEN_WIDTH = $clog2(CARRY_WIDTH/BYTE_SIZE);
     parameter int CARRY_KEEP_WIDTH = CARRY_WIDTH/8;
+
+    parameter int BYTE_ABSORB_WIDTH = 8;
 
     // Different step selector options
     typedef enum logic {
