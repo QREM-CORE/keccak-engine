@@ -6,7 +6,7 @@ module absorb (
     input   logic [RATE_WIDTH-1:0]        rate_i,
     input   logic [BYTE_ABSORB_WIDTH-1:0] bytes_absorbed_i,
     input   logic [DWIDTH-1:0]            msg_i,
-    input   logic [KEEP_WIDTH-1:0]        keep_i
+    input   logic [KEEP_WIDTH-1:0]        keep_i,
 
     output  logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o,
     output  logic [BYTE_ABSORB_WIDTH-1:0] bytes_absorbed_o,
@@ -17,7 +17,7 @@ module absorb (
     localparam INPUT_LANE_NUM = 4;
     localparam BYTES_PER_LANE = LANE_SIZE/BYTE_SIZE;
     localparam TOTAL_BYTES = DWIDTH/BYTE_SIZE;
-    localparam CARRY_KEEP_LOWER_INDEX = 64;
+    localparam CARRY_KEEP_LOWER_INDEX = 8;
     localparam CARRY_OVER_LOWER_INDEX = KEEP_WIDTH-CARRY_KEEP_WIDTH;
     localparam BYTE_DIV_32_WIDTH = 3;
     localparam INPUT_BYTES_NUM = DWIDTH/8;
@@ -91,13 +91,14 @@ module absorb (
     logic [4:0] rate_lane_limit;
     assign rate_lane_limit = rate_i[RATE_WIDTH-1:6]; // rate_i / 64
 
+    int start_lane_idx;
+
     always_comb begin
         // Default
         state_array_o = state_array_i;
 
         // Determine the starting linear lane index (0, 32, 64, 96, ...)
         // Logic: bytes / 8 bytes_per_lane
-        int start_lane_idx;
         start_lane_idx = int'(bytes_absorbed_i >> 3);
 
         // Loop through 4 input lanes

@@ -3,7 +3,7 @@
 # =====================
 
 # List of testbenches (example: TESTBENCHES = theta_step_tb rho_step_tb)
-TESTBENCHES = theta_step_tb rho_step_tb pi_step_tb chi_step_tb iota_step_tb
+TESTBENCHES = theta_step_tb rho_step_tb pi_step_tb chi_step_tb iota_step_tb absorb_tb
 
 # RTL design and package files
 PKG_SRCS = rtl/keccak_pkg.sv

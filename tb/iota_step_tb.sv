@@ -15,9 +15,9 @@ module iota_step_tb();
 
     // Instantiate DUT
     iota_step dut (
-        .lane00_in(lane00_in),
-        .i_r(i_r),
-        .lane00_out(lane00_out)
+        .lane00_i(lane00_in),
+        .round_index_i(i_r),
+        .lane00_o(lane00_out)
     );
 
     // ==========================================================

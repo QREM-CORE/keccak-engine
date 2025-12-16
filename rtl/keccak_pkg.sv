@@ -4,14 +4,14 @@ package keccak_pkg;
 
     // Keccak Structure
     parameter int DWIDTH = 256; // Input data is 32 bytes
-    parameter int DATA_BYTE_NUM = DATA_SIZE/8;
+    parameter int DATA_BYTE_NUM = DWIDTH/8;
     parameter int KEEP_WIDTH = DWIDTH/8; // 1 bit for every data byte
-    parameter int MAX_OUTPUT_DWIDTH = 2*VALID_BYTES_BIT_WIDTH;
+    parameter int MAX_OUTPUT_DWIDTH = 512;
     parameter int X_WIDTH = $clog2(ROW_SIZE);
     parameter int Y_WIDTH = $clog2(COL_SIZE);
 
     // Different Keccak Modes
-    typedef enum logic {
+    typedef enum {
         SHA3_256,
         SHA3_512,
         SHAKE128,
@@ -38,13 +38,14 @@ package keccak_pkg;
     parameter int BYTE_ABSORB_WIDTH = 8;
 
     // Different step selector options
-    typedef enum logic {
+    typedef enum {
+        IDLE_STEP,
         ZERO_STEP,
         THETA_STEP,
         RHO_STEP,
         PI_STEP,
         CHI_STEP,
-        IOTA_STEP,
+        IOTA_STEP
     } keccak_step;
 
     // State Array Dimension Bit Sizes

@@ -1,11 +1,13 @@
-module keccak_step_unit (
-    input   [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
-    // Current round index (0-23)
-    input   [ROUND_INDEX_SIZE-1:0]                      round_index_i,
-    // Step Selector
-    input   [STEP_SEL_WIDTH-1:0]                        step_sel_i,
+import keccak_pkg::*;
 
-    output  [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
+module keccak_step_unit (
+    input   logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
+    // Current round index (0-23)
+    input   logic [ROUND_INDEX_SIZE-1:0]                      round_index_i,
+    // Step Selector
+    input   logic [STEP_SEL_WIDTH-1:0]                        step_sel_i,
+
+    output  logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
 );
     logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0]   theta_out,
                                                         rho_out,
@@ -25,13 +27,14 @@ module keccak_step_unit (
 
     // Multiplexor for step mappings
     always @(*) begin
-        case(step_sel)
+        case(step_sel_i)
             THETA_STEP          : state_array_o = theta_out;
             RHO_STEP            : state_array_o = rho_out;
             PI_STEP             : state_array_o = pi_out;
             CHI_STEP            : state_array_o = chi_out;
             IOTA_STEP           : state_array_o = iota_out;
-            IDLE_STEP, default  : state_array_o = 'b0;
+            IDLE_STEP           : state_array_o = 'b0;
+            default             : state_array_o = 'b0;
         endcase
     end
 

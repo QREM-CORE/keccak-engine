@@ -27,9 +27,9 @@ module keccak_core (
     wire    [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] ksu_out;
     wire    [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_new;
 
-    typedef enum reg {
-        KSU,
-        ABSORB
+    typedef enum {
+        KSU_SEL,
+        ABSORB_SEL
     } sa_in_sel;
     sa_in_sel state_array_in_sel;
 
@@ -60,7 +60,7 @@ module keccak_core (
     logic                           msg_recieved;   // Full message has been received
 
     // FSM States
-    typedef enum reg {
+    typedef enum {
         STATE_IDLE,
         STATE_ABSORB,
         STATE_SUFFIX,
@@ -90,8 +90,8 @@ module keccak_core (
     );
 
     // Keccak Control FSM
-    always @(posedge clk or posedge reset) begin
-        if (reset) begin
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
             state               <= STATE_IDLE;
             state_array         <= 'b0;
             state_array_wr_en   <= 1'b0;
@@ -103,11 +103,11 @@ module keccak_core (
 
             if (state_array_wr_en) begin
                 case (state_array_in_sel)
-                    KSU : begin
+                    KSU_SEL : begin
                         state_array <= ksu_out;
                     end
-                    ABSORB : begin
-                        state_array <= 
+                    ABSORB_SEL : begin
+                        state_array <= state_out;
                     end
                     default : begin
                         state_array <= state_array;
