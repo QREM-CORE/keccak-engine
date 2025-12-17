@@ -18,7 +18,7 @@ module absorb (
     localparam BYTES_PER_LANE = LANE_SIZE/BYTE_SIZE;
     localparam TOTAL_BYTES = DWIDTH/BYTE_SIZE;
     localparam CARRY_KEEP_LOWER_INDEX = 8;
-    localparam CARRY_OVER_LOWER_INDEX = KEEP_WIDTH-CARRY_KEEP_WIDTH;
+    localparam CARRY_OVER_LOWER_INDEX = 64;
     localparam BYTE_DIV_32_WIDTH = 3;
     localparam INPUT_BYTES_NUM = DWIDTH/8;
 
@@ -33,7 +33,7 @@ module absorb (
      */
 
     // Valid Handling and carry over wires
-    logic [$clog2(KEEP_WIDTH)-1:0] valid_byte_count;
+    logic [$clog2(KEEP_WIDTH + 1)-1:0] valid_byte_count;
     assign valid_byte_count = $countones(keep_i);
     logic [RATE_WIDTH-1:0] potential_absorbed;
     assign potential_absorbed = bytes_absorbed_i + valid_byte_count;
