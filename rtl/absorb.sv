@@ -1,3 +1,14 @@
+/*
+ * Module Name: absorb
+ * Author: Kiet Le
+ * Description: Absorb 32 byte input into state array and output state array.
+ *              All inputs shall have valid 32 byte input except the final transfer of full message...
+ *              which can have any value equal or less than 32 bytes.
+ *              Carry output always assumes 64 bits of input is valid, and the rest will be carried...
+ *              over with corresponding carry keep valid flags.
+ * NOTE: Purely combinational so far. Can be pipelined for higher clock speed if needed.
+ */
+
 import keccak_pkg::*;
 
 // Compute state array after absorption

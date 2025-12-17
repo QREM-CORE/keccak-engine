@@ -67,36 +67,45 @@ module absorb_tb ();
         input int exp_bytes_abs,
         input logic exp_has_carry,
         input logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] exp_state,
-        input logic [CARRY_WIDTH-1:0] exp_carry_data = '0 // Default to 0
+        input logic [CARRY_WIDTH-1:0] exp_carry_data = '0,    // Default to 0
+        input logic [CARRY_KEEP_WIDTH-1:0] exp_carry_keep = '0 // Default to 0 (Added Checker)
     );
         int error_count = 0;
 
         // 1. Check Bytes Absorbed
         if (bytes_absorbed_o !== exp_bytes_abs) begin
-            $error("[%s] FAIL: Bytes Absorbed mismatch. Expected: %0d, Got: %0d",
+            $error("[%s] FAIL: Bytes Absorbed mismatch. Expected: %0d, Got: %0d", 
                    test_name, exp_bytes_abs, bytes_absorbed_o);
             error_count++;
         end
 
         // 2. Check Carry Flag
         if (has_carry_over_o !== exp_has_carry) begin
-            $error("[%s] FAIL: Carry Flag mismatch. Expected: %0b, Got: %0b",
+            $error("[%s] FAIL: Carry Flag mismatch. Expected: %0b, Got: %0b", 
                    test_name, exp_has_carry, has_carry_over_o);
             error_count++;
         end
 
         // 3. Check Carry Data (Only if flag is high, or if we expect non-zero data)
         if (exp_has_carry && (carry_over_o !== exp_carry_data)) begin
-             $error("[%s] FAIL: Carry Data mismatch.\n\tExpected: %h\n\tGot:      %h",
+             $error("[%s] FAIL: Carry Data mismatch.\n\tExpected: %h\n\tGot:      %h", 
                    test_name, exp_carry_data, carry_over_o);
             error_count++;
         end
 
-        // 4. Check State Lanes
+        // 4. Check Carry Keep
+        // We check this if carry flag is high, or generally if we expect a non-zero value.
+        if (carry_keep_o !== exp_carry_keep) begin
+             $error("[%s] FAIL: Carry Keep mismatch.\n\tExpected: %h\n\tGot:      %h", 
+                   test_name, exp_carry_keep, carry_keep_o);
+            error_count++;
+        end
+
+        // 5. Check State Lanes
         for (int x = 0; x < ROW_SIZE; x++) begin
             for (int y = 0; y < COL_SIZE; y++) begin
                 if (state_out[x][y] !== exp_state[x][y]) begin
-                    $error("[%s] FAIL: State mismatch at [x=%0d][y=%0d].\n\tExpected: 0x%016h\n\tGot:      0x%016h",
+                    $error("[%s] FAIL: State mismatch at [x=%0d][y=%0d].\n\tExpected: 0x%016h\n\tGot:      0x%016h", 
                            test_name, x, y, exp_state[x][y], state_out[x][y]);
                     error_count++;
                 end
@@ -113,7 +122,7 @@ module absorb_tb ();
     // ==========================================================
     // Main Test Procedure
     // ==========================================================
-
+    
     logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] expected_state;
 
     initial begin
@@ -137,7 +146,7 @@ module absorb_tb ();
         keep_i = {32{1'b1}};                  // All 32 bytes valid
 
         #10;
-
+        
         expected_state = '0;
         expected_state[0][0] = 64'h1111_2222_3333_4444;
         expected_state[1][0] = 64'h1111_2222_3333_4444;
@@ -187,7 +196,9 @@ module absorb_tb ();
         expected_state = '0;
         expected_state[1][3] = 64'hAAAA_AAAA_AAAA_AAAA; // Lane 16
 
-        check_results("TC3", 136, 1, expected_state, {64'b0, 192'hBBBB_BBBB_BBBB_BBBB_BBBB_BBBB_BBBB_BBBB_BBBB_BBBB_BBBB_BBBB});
+        check_results("TC3", 136, 1, expected_state,
+                      {64'b0, 192'hBBBB_BBBB_BBBB_BBBB_BBBB_BBBB_BBBB_BBBB_BBBB_BBBB_BBBB_BBBB},
+                      24'hFFFFFF);
 
         print_state_fips(state_out);
 
@@ -209,7 +220,8 @@ module absorb_tb ();
         expected_state[3][1] = 64'hCCCC_CCCC_CCCC_CCCC;
 
         check_results("TC4", 72, 1, expected_state,
-                      {64'b0, 192'hCCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC});
+                      {64'b0, 192'hCCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC},
+                      24'hFFFFFF);
 
         print_state_fips(state_out);
 
@@ -231,8 +243,8 @@ module absorb_tb ();
         expected_state = '0;
         expected_state[0][0] = 64'h0000_00AA_BBCC_DDEE;
 
-        // Check: 5 bytes absorbed, Carry=0, Expected State, Expected Carry Data=0
-        check_results("TC5", 5, 0, expected_state, '0);
+        // Check: 5 bytes absorbed, Carry=0, Expected State, Expected Carry Data=0, Expected Keep=0
+        check_results("TC5", 5, 0, expected_state, '0, '0);
         print_state_fips(state_out);
 
         // ----------------------------------------------------------
@@ -255,7 +267,8 @@ module absorb_tb ();
         expected_state[0][4] = 64'h9999_8888_7777_6666;
 
         check_results("TC6", 168, 1, expected_state,
-                      {64'b0, 64'hBAD0_BAD0_BAD0_BAD0, 64'hBAD0_BAD0_BAD0_BAD0, 64'hCAFE_F00D_CAFE_F00D});
+                      {64'b0, 64'hBAD0_BAD0_BAD0_BAD0, 64'hBAD0_BAD0_BAD0_BAD0, 64'hCAFE_F00D_CAFE_F00D},
+                      24'hFFFFFF);
 
         print_state_fips(state_out);
 
