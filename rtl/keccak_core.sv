@@ -1,11 +1,12 @@
 import keccak_pkg::*;
 
 module keccak_core (
-    input                                   clk,
-    input                                   rst,
+    input   logic                           clk,
+    input   logic                           rst,
 
-    input                                   start_i,
-    input [MODE_SEL_WIDTH-1:0]              keccak_mode_i,
+    input   logic                           start_i,
+    input   logic [MODE_SEL_WIDTH-1:0]      keccak_mode_i,
+    input   logic                           stop_i,
 
     // AXI4-Stream Signals - Sink
     input   logic [DWIDTH-1:0]              t_data_i,
@@ -17,6 +18,7 @@ module keccak_core (
     output  logic [MAX_OUTPUT_DWIDTH-1:0]   t_data_o,
     output  logic                           t_valid_o,
     output  logic                           t_last_o,
+    output  logic [KEEP_WIDTH-1:0]          t_keep_o,
     input   logic                           t_ready_i
 );
     /*
@@ -35,10 +37,11 @@ module keccak_core (
         STATE_PI,
         STATE_CHI,
         STATE_IOTA,
-        STATE_DONE
+        STATE_SQUEEZE
     } state_t;
     state_t state, next_state;
 
+    // State Array Write Selector Options
     typedef enum {
         KSU_SEL,
         ABSORB_SEL,
@@ -90,6 +93,12 @@ module keccak_core (
     // Suffix/Padding Signals
     wire    [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] padding_state_out;
 
+    // Squeeze Signals
+    logic                       squeeze_wr_en;
+    wire                        squeeze_perm_needed_wire;
+    logic   [RATE_WIDTH-1:0]    bytes_squeezed;
+    wire    [RATE_WIDTH-1:0]    bytes_squeezed_o;
+
     // Module to get sha3 parameters during initializtion
     sha3_setup sha3_setup (
         .keccak_mode_i(keccak_mode_i),
@@ -134,12 +143,24 @@ module keccak_core (
         .state_array_o    (padding_state_out)
     );
 
+    squeeze_unit squeeze_unit_i (
+        .state_array_i(state_array),
+        .keccak_mode_i(keccak_mode),
+        .rate_i(rate_wire),
+        .bytes_squeezed_i(bytes_squeezed),
+
+        .bytes_squeezed_o(bytes_squeezed_o),
+        .squeeze_perm_needed_o(squeeze_perm_needed_wire),
+        .data_o(t_data_o),
+        .keep_o(t_keep_o),
+        .last_o(t_last_o)
+    );
+
     // Sequential Control FSM Updates
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             state               <= STATE_IDLE;
             state_array         <= 'b0;
-            state_array_wr_en   <= 'b0;
             round_idx           <= 'b0;
             msg_recieved        <= 'b0;
 
@@ -149,23 +170,38 @@ module keccak_core (
             carry_over      <= 'b0;
             has_carry_over  <= 'b0;
             carry_keep      <= 'b0;
+
+            // Squeeze Signals
+            bytes_squeezed  <= 'b0;
         end else begin
             // FSM State Updating
             state <= next_state;
 
             // Initialization
             if (init_wr_en) begin
-                // Setup Parameters
+                // 1. Setup Parameters
                 keccak_mode <= keccak_mode_i;
                 rate        <= rate_wire;
                 capacity    <= capacity_wire;
                 suffix      <= suffix_wire;
 
-                bytes_absorbed <= 'b0;
+                // 2. CRITICAL: Wipe the State Logic
+                state_array     <= '0;  // Must be 0 before starting new Absorb
+                bytes_absorbed  <= '0;
+                bytes_squeezed  <= '0;
+                msg_recieved    <= '0;
+
+                // 3. Clear Internal Flags
+                absorb_done     <= '0;
+                has_carry_over  <= '0;
+                carry_over      <= '0;
+                carry_keep      <= '0;
+                round_idx       <= '0;
 
             // Reset bytes absorbed after absorb permutation
             end else if (perm_en) begin
-                bytes_absorbed <= 'b0;
+                bytes_absorbed <= '0;
+                bytes_squeezed <= '0;
             end
 
             // State Array Updating
@@ -207,10 +243,16 @@ module keccak_core (
                 msg_recieved <= 1'b1;
             end
 
+            // Permutation Round Updating
             if (rst_round_idx_en) begin
                 round_idx <= 'b0;
             end else if (inc_round_idx_en) begin
                 round_idx <= round_idx + 'b1;
+            end
+
+            // Squeeze Updating
+            if (squeeze_wr_en) begin
+                bytes_squeezed <= bytes_squeezed_o;
             end
         end
     end
@@ -283,7 +325,7 @@ module keccak_core (
                 state_array_wr_en = 1'b1;
                 state_array_in_sel = PADDING_SEL;
                 next_state = STATE_THETA;
-                perm_en = 1'b1
+                perm_en = 1'b1;
             end
 
             STATE_THETA : begin
@@ -317,7 +359,7 @@ module keccak_core (
             STATE_IOTA : begin
                 if (round_idx == 'd23) begin
                     if (absorb_done) begin
-                        next_state = STATE_DONE;
+                        next_state = STATE_SQUEEZE;
                     end else begin
                         next_state = STATE_ABSORB;
                     end
@@ -332,8 +374,32 @@ module keccak_core (
                 state_array_in_sel  = KSU_SEL;
             end
 
-            STATE_DONE : begin
+            STATE_SQUEEZE : begin
+                // PRIORITY 1: External Stop
+                if (stop_i) begin
+                    next_state = STATE_IDLE;
+                    init_wr_en = 1'b1;
 
+                // PRIORITY 2: Output Data
+                end else if (t_ready_i) begin
+                    t_valid_o = 1'b1;
+
+                    // A. Check Fixed Hash Done (SHA3-*)
+                    if (t_last_o) begin
+                        next_state = STATE_IDLE;
+                        init_wr_en = 1'b1;
+
+                    // B. Check Rate Empty -> Re-Permute (SHAKE)
+                    end else if (squeeze_perm_needed_wire) begin
+                        next_state = STATE_THETA;
+                        perm_en = 1'b1; // Reset counters
+
+                    // C. Continue Squeezing
+                    end else begin
+                        next_state = STATE_SQUEEZE;
+                        squeeze_wr_en = 1'b1;
+                    end
+                end
             end
         endcase
     end

@@ -1,0 +1,92 @@
+/*
+ * Module Name: squeeze_unit
+ * Author: Kiet Le
+ * Description: Squeeze/output state array
+ * NOTE: Purely combinational so far. Can be pipelined for higher clock speed if needed.
+ */
+
+import keccak_pkg::*;
+
+module squeeze_unit (
+    input  logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
+    input  logic [MODE_SEL_WIDTH-1:0]       keccak_mode_i,
+    input  logic [RATE_WIDTH-1:0]           rate_i,
+    input  logic [RATE_WIDTH-1:0]           bytes_squeezed_i,      // Counter from FSM
+
+    output logic [RATE_WIDTH-1:0]           bytes_squeezed_o,      // Next counter value
+    output logic                            squeeze_perm_needed_o, // Flag: Rate is empty!
+    output logic [MAX_OUTPUT_DWIDTH-1:0]    data_o,                // 256 Bits
+    output logic [MAX_OUTPUT_DWIDTH/8-1:0]  keep_o,                // Valid bytes
+    output logic                            last_o                 // End of Hash
+);
+    // ==========================================================
+    // 1. Calculate Next Counter Value (Added Logic)
+    // ==========================================================
+    // Simply increment by the bus width (32 bytes).
+    // The FSM is responsible for resetting this to 0 when permutation happens.
+    assign bytes_squeezed_o = bytes_squeezed_i + (MAX_OUTPUT_DWIDTH / 8);
+
+    // ==========================================================
+    // 2. Flatten the 2D State Array into 1D
+    // ==========================================================
+    logic [1599:0] state_linear;
+    always_comb begin
+        for (int y = 0; y < 5; y++) begin
+            for (int x = 0; x < 5; x++) begin
+                // Calculate linear lane index: i = 5*y + x
+                state_linear[(x + 5*y) * 64 +: 64] = state_array_i[x][y];
+            end
+        end
+    end
+
+    // ==========================================================
+    // 3. Calculate Output Window
+    // ==========================================================
+    // We want 256 bits (32 bytes) starting at bytes_squeezed_i
+    logic [10:0] start_bit_idx;
+    assign start_bit_idx = bytes_squeezed_i * 8;
+
+    // Extract the data window
+    assign data_o = state_linear[start_bit_idx +: MAX_OUTPUT_DWIDTH];
+
+    // ==========================================================
+    // 4. Valid Byte Calculation (Keep Signal)
+    // ==========================================================
+    logic [RATE_WIDTH-1:0] bytes_remaining_in_rate;
+    // Note: rate_i is bits, convert to bytes.
+    assign bytes_remaining_in_rate = (rate_i >> 3) - bytes_squeezed_i;
+
+    always_comb begin
+        // If we have more than 32 bytes left in the rate, keep all 32.
+        if (bytes_remaining_in_rate >= (MAX_OUTPUT_DWIDTH/8)) begin
+            keep_o = '1; // All ones
+        end else begin
+            // We hit the end of the rate block. Mask the valid bytes.
+            // Example: 5 bytes left -> keep_o = 00...0011111
+            keep_o = (1 << bytes_remaining_in_rate) - 1;
+        end
+    end
+
+    // ==========================================================
+    // 5. SHAKE Permutation Trigger
+    // ==========================================================
+    // If the remaining bytes <= what we are about to output, we are draining the block.
+    assign squeeze_perm_needed_o = (bytes_remaining_in_rate <= (MAX_OUTPUT_DWIDTH/8));
+
+    // ==========================================================
+    // 6. Last Signal Logic
+    // ==========================================================
+    always_comb begin
+        case (keccak_mode_i)
+            // Fixed Length Hashes: Done when we output the specific size.
+            // Note: We compare against bytes_squeezed_o (the NEXT value)
+            // to assert 'last' during the final transfer.
+            SHA3_256: last_o = (bytes_squeezed_o >= 32);
+            SHA3_512: last_o = (bytes_squeezed_o >= 64);
+
+            // XOF (SHAKE): Infinite. Rely on external stop signal.
+            default:  last_o = 1'b0;
+        endcase
+    end
+
+endmodule
