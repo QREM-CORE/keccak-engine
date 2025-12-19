@@ -23,7 +23,7 @@ package keccak_pkg;
     // Setup Parameters
     parameter int CAPACITY_WIDTH = 11;
     parameter int RATE_WIDTH = 11;
-    parameter int SUFFIX_WIDTH = 4;
+    parameter int SUFFIX_WIDTH = BYTE_SIZE;
     parameter int SUFFIX_LEN_WIDTH = 3;
 
     /* Carry Over Width

@@ -23,17 +23,32 @@ module keccak_core (
      * 1600-bit State Array using to hold the state of keccak core.
      * See FIPS202 Section 3.1.1 for more information on state array.
      */
-    reg     [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array;
+    reg [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array;
+
+    // FSM States
+    typedef enum {
+        STATE_IDLE,
+        STATE_ABSORB,
+        STATE_SUFFIX_PADDING,
+        STATE_THETA,
+        STATE_RHO,
+        STATE_PI,
+        STATE_CHI,
+        STATE_IOTA,
+        STATE_DONE
+    } state_t;
+    state_t state, next_state;
 
     typedef enum {
         KSU_SEL,
-        ABSORB_SEL
+        ABSORB_SEL,
+        PADDING_SEL
     } sa_in_sel;
     sa_in_sel state_array_in_sel;
 
     // KSU Signals
     wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] ksu_out;
-    reg [ROUND_INDEX_SIZE-1:0] round_index;
+    reg [ROUND_INDEX_SIZE-1:0] round_idx;
     reg [STEP_SEL_WIDTH-1:0] step_sel;
 
     // SHA3 Paramter Setup Signals
@@ -43,13 +58,13 @@ module keccak_core (
     logic   [CAPACITY_WIDTH-1:0] capacity;
     wire    [SUFFIX_WIDTH-1:0] suffix_wire;
     logic   [SUFFIX_WIDTH-1:0] suffix;
-    wire    [SUFFIX_LEN_WIDTH-1:0] suffix_len_wire;
-    logic   [SUFFIX_LEN_WIDTH-1:0] suffix_len;
 
     // FSM Control Signals
     logic state_array_wr_en;
     logic [MODE_SEL_WIDTH-1:0] keccak_mode;
     logic init_wr_en;
+    logic rst_round_idx_en;
+    logic inc_round_idx_en;
 
     // Absorbing Signals
     logic                           absorb_done; // Absorb stage fully complete flag
@@ -72,45 +87,27 @@ module keccak_core (
     logic   [CARRY_KEEP_WIDTH-1:0]                      carry_keep_o;
     logic   [CARRY_WIDTH-1:0]                           carry_over_o;
 
-    // Padding Signals
+    // Suffix/Padding Signals
     wire    [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] padding_state_out;
-    int     padding_first_lane_idx;
-    int     padding_last_lane_idx;
-
-    // FSM States
-    typedef enum {
-        STATE_IDLE,
-        STATE_ABSORB,
-        STATE_SUFFIX,
-        STATE_PADDING,
-        STATE_THETA,
-        STATE_RHO,
-        STATE_PI,
-        STATE_CHI,
-        STATE_IOTA,
-        STATE_DONE
-    } state_t;
-    state_t state, next_state;
 
     // Module to get sha3 parameters during initializtion
     sha3_setup sha3_setup (
         .keccak_mode_i(keccak_mode_i),
         .rate_o(rate_wire),
         .capacity_o(capacity_wire),
-        .suffix_o(suffix_wire),
-        .suffix_len_o(suffix_len_wire)
+        .suffix_o(suffix_wire)
     );
 
     // Keccak Step Mapping Operations Module
     keccak_step_unit KSU (
         .state_array_i(state_array),
-        .round_index_i(round_index),
+        .round_index_i(round_idx),
         .step_sel_i(step_sel),
         .step_array_o(ksu_out)
     );
 
     // Absorb Functionality Module
-    absorb absorb_unit(
+    absorb_unit absorb_unit_i (
         .state_array_i(state_array),
         .rate_i(rate_wire),
         .bytes_absorbed_i(bytes_absorbed),
@@ -123,11 +120,19 @@ module keccak_core (
         .carry_keep_o(carry_keep_o),
         .carry_over_o(carry_over_o)
     );
-    assign ABSORB_UNIT_MSG_I    = (has_carry_over) ? { 64'b0, carry_over} : t_data_i;
-    assign ABSORB_UNIT_KEEP_I   = (has_carry_over) ? {  8'b0, carry_keep} : t_keep_i;
+    assign ABSORB_UNIT_MSG_I    = has_carry_over ? { 64'b0, carry_over} : t_data_i;
+    assign ABSORB_UNIT_KEEP_I   = has_carry_over ? {  8'b0, carry_keep} : t_keep_i;
 
     // Max Byte Absorb Value
     assign max_bytes_absorbed = rate_wire >> 3;
+
+    suffix_padder_unit suf_padder_i (
+        .state_array_i    (state_array),
+        .rate_i           (rate_wire),
+        .bytes_absorbed_i (bytes_absorbed),
+        .suffix_i         (suffix_wire),
+        .state_array_o    (padding_state_out)
+    );
 
     // Sequential Control FSM Updates
     always @(posedge clk or posedge rst) begin
@@ -135,8 +140,7 @@ module keccak_core (
             state               <= STATE_IDLE;
             state_array         <= 'b0;
             state_array_wr_en   <= 'b0;
-            round_index         <= 'b0;
-            step_sel            <= IDLE_STEP;
+            round_idx           <= 'b0;
             msg_recieved        <= 'b0;
 
             // Absorb Signals
@@ -156,11 +160,10 @@ module keccak_core (
                 rate        <= rate_wire;
                 capacity    <= capacity_wire;
                 suffix      <= suffix_wire;
-                suffix_len  <= suffix_len_wire;
 
                 bytes_absorbed <= 'b0;
 
-            // Reset bytes absorbed after permutation
+            // Reset bytes absorbed after absorb permutation
             end else if (perm_en) begin
                 bytes_absorbed <= 'b0;
             end
@@ -174,6 +177,9 @@ module keccak_core (
                     ABSORB_SEL : begin
                         state_array <= absorb_state_out;
                     end
+                    PADDING_SEL : begin
+                        state_array <= padding_state_out;
+                    end
                     default : begin
                         state_array <= state_array;
                     end
@@ -186,7 +192,7 @@ module keccak_core (
 
                 if (has_carry_over_o) begin
                     has_carry_over  <= 1'b1;
-                    carry_over      <= carry_over_o
+                    carry_over      <= carry_over_o;
                     carry_keep      <= carry_keep_o;
                 end else begin
                     has_carry_over  <= 1'b0;
@@ -199,6 +205,12 @@ module keccak_core (
             // If source has completed full message transfer
             if (t_last_i) begin
                 msg_recieved <= 1'b1;
+            end
+
+            if (rst_round_idx_en) begin
+                round_idx <= 'b0;
+            end else if (inc_round_idx_en) begin
+                round_idx <= round_idx + 'b1;
             end
         end
     end
@@ -255,7 +267,7 @@ module keccak_core (
 
                 // Message fully received, move on to padding stage
                 end else if (msg_recieved) begin
-                    next_state = STATE_SUFFIX;
+                    next_state = STATE_SUFFIX_PADDING;
                     complete_absorb_en = 1'b1;
 
                 // Message not yet fully received, waiting for t_valid
@@ -267,7 +279,60 @@ module keccak_core (
                 end
             end
 
-            STATE_SUFFIX : begin
+            STATE_SUFFIX_PADDING : begin
+                state_array_wr_en = 1'b1;
+                state_array_in_sel = PADDING_SEL;
+                next_state = STATE_THETA;
+                perm_en = 1'b1
+            end
+
+            STATE_THETA : begin
+                next_state          = STATE_RHO;
+                state_array_wr_en   = 1'b1;
+                step_sel            = THETA_STEP;
+                state_array_in_sel  = KSU_SEL;
+            end
+
+            STATE_RHO : begin
+                next_state          = STATE_PI;
+                state_array_wr_en   = 1'b1;
+                step_sel            = RHO_STEP;
+                state_array_in_sel  = KSU_SEL;
+            end
+
+            STATE_PI : begin
+                next_state          = STATE_CHI;
+                state_array_wr_en   = 1'b1;
+                step_sel            = PI_STEP;
+                state_array_in_sel  = KSU_SEL;
+            end
+
+            STATE_CHI : begin
+                next_state          = STATE_IOTA;
+                state_array_wr_en   = 1'b1;
+                step_sel            = CHI_STEP;
+                state_array_in_sel  = KSU_SEL;
+            end
+
+            STATE_IOTA : begin
+                if (round_idx == 'd23) begin
+                    if (absorb_done) begin
+                        next_state = STATE_DONE;
+                    end else begin
+                        next_state = STATE_ABSORB;
+                    end
+                    rst_round_idx_en = 1'b1;
+                end else begin
+                    next_state = STATE_THETA;
+                    inc_round_idx_en = 1'b1;
+                end
+
+                state_array_wr_en   = 1'b1;
+                step_sel            = IOTA_STEP;
+                state_array_in_sel  = KSU_SEL;
+            end
+
+            STATE_DONE : begin
 
             end
         endcase

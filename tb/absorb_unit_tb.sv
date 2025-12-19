@@ -74,21 +74,21 @@ module absorb_tb ();
 
         // 1. Check Bytes Absorbed
         if (bytes_absorbed_o !== exp_bytes_abs) begin
-            $error("[%s] FAIL: Bytes Absorbed mismatch. Expected: %0d, Got: %0d", 
+            $error("[%s] FAIL: Bytes Absorbed mismatch. Expected: %0d, Got: %0d",
                    test_name, exp_bytes_abs, bytes_absorbed_o);
             error_count++;
         end
 
         // 2. Check Carry Flag
         if (has_carry_over_o !== exp_has_carry) begin
-            $error("[%s] FAIL: Carry Flag mismatch. Expected: %0b, Got: %0b", 
+            $error("[%s] FAIL: Carry Flag mismatch. Expected: %0b, Got: %0b",
                    test_name, exp_has_carry, has_carry_over_o);
             error_count++;
         end
 
         // 3. Check Carry Data (Only if flag is high, or if we expect non-zero data)
         if (exp_has_carry && (carry_over_o !== exp_carry_data)) begin
-             $error("[%s] FAIL: Carry Data mismatch.\n\tExpected: %h\n\tGot:      %h", 
+             $error("[%s] FAIL: Carry Data mismatch.\n\tExpected: %h\n\tGot:      %h",
                    test_name, exp_carry_data, carry_over_o);
             error_count++;
         end
@@ -96,7 +96,7 @@ module absorb_tb ();
         // 4. Check Carry Keep
         // We check this if carry flag is high, or generally if we expect a non-zero value.
         if (carry_keep_o !== exp_carry_keep) begin
-             $error("[%s] FAIL: Carry Keep mismatch.\n\tExpected: %h\n\tGot:      %h", 
+             $error("[%s] FAIL: Carry Keep mismatch.\n\tExpected: %h\n\tGot:      %h",
                    test_name, exp_carry_keep, carry_keep_o);
             error_count++;
         end
@@ -105,7 +105,7 @@ module absorb_tb ();
         for (int x = 0; x < ROW_SIZE; x++) begin
             for (int y = 0; y < COL_SIZE; y++) begin
                 if (state_out[x][y] !== exp_state[x][y]) begin
-                    $error("[%s] FAIL: State mismatch at [x=%0d][y=%0d].\n\tExpected: 0x%016h\n\tGot:      0x%016h", 
+                    $error("[%s] FAIL: State mismatch at [x=%0d][y=%0d].\n\tExpected: 0x%016h\n\tGot:      0x%016h",
                            test_name, x, y, exp_state[x][y], state_out[x][y]);
                     error_count++;
                 end
@@ -122,7 +122,7 @@ module absorb_tb ();
     // ==========================================================
     // Main Test Procedure
     // ==========================================================
-    
+
     logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] expected_state;
 
     initial begin
@@ -146,7 +146,7 @@ module absorb_tb ();
         keep_i = {32{1'b1}};                  // All 32 bytes valid
 
         #10;
-        
+
         expected_state = '0;
         expected_state[0][0] = 64'h1111_2222_3333_4444;
         expected_state[1][0] = 64'h1111_2222_3333_4444;

@@ -1,5 +1,5 @@
 /*
- * Module Name: absorb
+ * Module Name: absorb_unit
  * Author: Kiet Le
  * Description: Absorb 32 byte input into state array and output state array.
  *              All inputs shall have valid 32 byte input except the final transfer of full message...
@@ -12,7 +12,7 @@
 import keccak_pkg::*;
 
 // Compute state array after absorption
-module absorb (
+module absorb_unit (
     input   logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
     input   logic [RATE_WIDTH-1:0]        rate_i,
     input   logic [BYTE_ABSORB_WIDTH-1:0] bytes_absorbed_i,

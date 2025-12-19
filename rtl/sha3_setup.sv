@@ -5,44 +5,38 @@ module sha3_setup (
     input  logic [MODE_SEL_WIDTH-1:0]   keccak_mode_i, // 00: SHA3-256, 01: SHA3-512, 10: SHAKE128, 11: SHAKE256
     output logic [RATE_WIDTH-1:0]       rate_o,
     output logic [CAPACITY_WIDTH-1:0]   capacity_o,
-    output logic [SUFFIX_WIDTH-1:0]     suffix_o,
-    output logic [SUFFIX_LEN_WIDTH-1:0] suffix_len_o // Tells downstream logic how many bits to use
+    output logic [SUFFIX_WIDTH-1:0]     suffix_o
 );
     always_comb begin
         case (keccak_mode_i)
             SHA3_256: begin
                 rate_o          = 1088;
                 capacity_o      = 512;
-                suffix_o        = 4'b0001; // '01' padded to 4 bits
-                suffix_len_o    = 2;       // Only use bottom 2 bits
+                suffix_o        = 8'b0000_0110; // Suffix '01' + Padding '1' (Hex 0x06)
             end
 
             SHA3_512: begin
                 rate_o          = 576;
                 capacity_o      = 1024;
-                suffix_o        = 4'b0001; // '01'
-                suffix_len_o    = 2;
+                suffix_o        = 8'b0000_0110; // Suffix '01' + Padding '1' (Hex 0x06)
             end
 
             SHAKE128: begin
                 rate_o          = 1344;
                 capacity_o      = 256;
-                suffix_o        = 4'b1111; // '1111'
-                suffix_len_o    = 4;
+                suffix_o        = 8'b0001_1111; // Suffix '1111' + Padding '1' (Hex 0x1F)
             end
 
             SHAKE256: begin
                 rate_o          = 1088;
                 capacity_o      = 512;
-                suffix_o        = 4'b1111; // '1111'
-                suffix_len_o    = 4;
+                suffix_o        = 8'b0001_1111; // Suffix '1111' + Padding '1' (Hex 0x1F)
             end
 
             default: begin
                 rate_o          = '0;
                 capacity_o      = '0;
                 suffix_o        = '0;
-                suffix_len_o    = '0;
             end
         endcase
     end
