@@ -32,7 +32,6 @@ package keccak_pkg;
      * This means that carry over of 256-64=192
      */
     parameter int CARRY_WIDTH = 192;
-    parameter int CARRY_LEN_WIDTH = $clog2(CARRY_WIDTH/BYTE_SIZE);
     parameter int CARRY_KEEP_WIDTH = CARRY_WIDTH/8;
 
     parameter int BYTE_ABSORB_WIDTH = 8;

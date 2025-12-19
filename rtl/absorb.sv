@@ -21,8 +21,8 @@ module absorb (
 
     output  logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o,
     output  logic [BYTE_ABSORB_WIDTH-1:0] bytes_absorbed_o,
-    output  logic [CARRY_WIDTH-1:0]       carry_over_o,
     output  logic                         has_carry_over_o,
+    output  logic [CARRY_WIDTH-1:0]       carry_over_o,
     output  logic [CARRY_KEEP_WIDTH-1:0]  carry_keep_o
 );
     localparam INPUT_LANE_NUM = 4;
