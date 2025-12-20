@@ -16,14 +16,13 @@ module keccak_step_unit (
                                                         iota_out;
 
     // Instantiate Step Mapping Modules
-    theta_step u_theta (.state_in(state_array_i), .state_out(theta_out));
-    rho_step   u_rho   (.state_in(state_array_i), .state_out(rho_out));
-    pi_step    u_pi    (.state_in(state_array_i), .state_out(pi_out));
-    chi_step   u_chi   (.state_in(state_array_i), .state_out(chi_out));
-    // TODO: FIX THIS IOTA LOGIC
-    iota_step  u_iota  (.lane00_i(state_array_i[0][0]),
+    theta_step u_theta (.state_array_i(state_array_i), .state_array_o(theta_out));
+    rho_step   u_rho   (.state_array_i(state_array_i), .state_array_o(rho_out));
+    pi_step    u_pi    (.state_array_i(state_array_i), .state_array_o(pi_out));
+    chi_step   u_chi   (.state_array_i(state_array_i), .state_array_o(chi_out));
+    iota_step  u_iota  (.state_array_i(state_array_i),
                         .round_index_i(round_index),
-                        .lane00_o(iota_out));
+                        .state_array_o(iota_out));
 
     // Multiplexor for step mappings
     always @(*) begin

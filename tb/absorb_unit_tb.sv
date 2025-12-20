@@ -5,7 +5,7 @@
 
 import keccak_pkg::*;
 
-module absorb_tb ();
+module absorb_unit_tb ();
 
     //Parameters & Constants
     localparam RATE_SHA3_256 = 1088;    // 136 Bytes (17 Lanes)
@@ -27,7 +27,7 @@ module absorb_tb ();
     logic [CARRY_KEEP_WIDTH-1:0]  carry_keep_o;
 
     // Instance
-    absorb dut (
+    absorb_unit dut (
         .state_array_i      (state_in),
         .rate_i             (rate_i),
         .bytes_absorbed_i   (bytes_absorbed_i),
