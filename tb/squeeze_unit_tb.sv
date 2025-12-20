@@ -10,9 +10,9 @@ module squeeze_unit_tb ();
     // ==========================================================
     // Parameters & Constants
     // ==========================================================
-    localparam RATE_SHA3_256 = 1088;    // 136 Bytes
-    localparam RATE_SHA3_512 = 576;     // 72  Bytes
-    localparam RATE_SHAKE128 = 1344;    // 168 Bytes
+    localparam int RATE_SHA3_256 = 1088;    // 136 Bytes
+    localparam int RATE_SHA3_512 = 576;     // 72  Bytes
+    localparam int RATE_SHAKE128 = 1344;    // 168 Bytes
 
     // DUT Signals
     logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_i;

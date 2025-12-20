@@ -11,8 +11,8 @@ module suffix_padder_unit_tb ();
     // ==========================================================
     // Parameters & Constants
     // ==========================================================
-    localparam RATE_SHA3_256 = 1088; // 136 Bytes (17 Lanes)
-    localparam RATE_SHAKE128 = 1344; // 168 Bytes (21 Lanes)
+    localparam int RATE_SHA3_256 = 1088; // 136 Bytes (17 Lanes)
+    localparam int RATE_SHAKE128 = 1344; // 168 Bytes (21 Lanes)
 
     // Suffix Constants (Byte values)
     localparam logic [7:0] SUFFIX_SHA3  = 8'h06; // 01...
@@ -178,7 +178,7 @@ module suffix_padder_unit_tb ();
         bytes_absorbed_i = 0;
         suffix_i = SUFFIX_SHA3; // 0x06
 
-        // Expected: 
+        // Expected:
         // Lane 0: 0xFF...FF ^ 0x06 -> 0xFF...F9
         // Lane 16: 0xFF...FF ^ 0x80... -> 0x7F...FF
         // All others: 0xFF...FF

@@ -46,8 +46,8 @@ module keccak_core (
         KSU_SEL,
         ABSORB_SEL,
         PADDING_SEL
-    } sa_in_sel;
-    sa_in_sel state_array_in_sel;
+    } sa_in_sel_t;
+    sa_in_sel_t state_array_in_sel;
 
     // KSU Signals
     wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] ksu_out;
@@ -78,8 +78,8 @@ module keccak_core (
     logic   [DWIDTH-1:0]            ABSORB_UNIT_MSG_I;
     logic   [KEEP_WIDTH-1:0]        ABSORB_UNIT_KEEP_I;
 
-    logic   [RATE_WIDTH-1:0]        bytes_absorbed; // Num of bytes absorbed in the current rate block
-    reg     [CARRY_WIDTH-1:0]       carry_over;     // If rate is full, need to carry over values from input
+    logic   [RATE_WIDTH-1:0]        bytes_absorbed; // # of bytes absorbed in the current rate block
+    reg     [CARRY_WIDTH-1:0]       carry_over;     // If rate is full, need to carry over values
     reg                             has_carry_over; // Carry over flag
     reg     [CARRY_KEEP_WIDTH-1:0]  carry_keep;
     logic                           msg_recieved;   // Full message has been received
@@ -400,6 +400,10 @@ module keccak_core (
                         squeeze_wr_en = 1'b1;
                     end
                 end
+            end
+
+            default : begin
+                next_state = STATE_IDLE;
             end
         endcase
     end

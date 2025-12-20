@@ -2,7 +2,7 @@ import keccak_pkg::*;
 
 // SHA3 Parameter Setup Module
 module sha3_setup (
-    input  logic [MODE_SEL_WIDTH-1:0]   keccak_mode_i, // 00: SHA3-256, 01: SHA3-512, 10: SHAKE128, 11: SHAKE256
+    input  logic [MODE_SEL_WIDTH-1:0]   keccak_mode_i,
     output logic [RATE_WIDTH-1:0]       rate_o,
     output logic [CAPACITY_WIDTH-1:0]   capacity_o,
     output logic [SUFFIX_WIDTH-1:0]     suffix_o

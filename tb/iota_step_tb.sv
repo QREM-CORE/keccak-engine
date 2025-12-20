@@ -42,7 +42,7 @@ module iota_step_tb();
         int x, y;
         for (x = 0; x < 5; x++) begin
             for (y = 0; y < 5; y++) begin
-                state_i[x][y] = {56'h0, x[3:0], y[3:0]}; 
+                state_i[x][y] = {56'h0, x[3:0], y[3:0]};
             end
         end
     endtask
@@ -63,7 +63,7 @@ module iota_step_tb();
 
         // 1. Check Lane (0,0) Modification
         exp_lane00 = state_i[0][0] ^ expected_rc;
-        
+
         if (state_o[0][0] !== exp_lane00) begin
             $error("FAIL: Lane (0,0) Mismatch!");
             $display("  Input:    0x%016h", state_i[0][0]);
@@ -112,7 +112,7 @@ module iota_step_tb();
         // ================================
         // Test 2: Round 1 (With Data)
         // ================================
-        init_state(); 
+        init_state();
         state_i[0][0] = 64'hAAAAAAAAAAAAAAAA; // Test XOR logic
         i_r = 1;
         #1;

@@ -25,13 +25,13 @@ module absorb_unit (
     output  logic [CARRY_WIDTH-1:0]       carry_over_o,
     output  logic [CARRY_KEEP_WIDTH-1:0]  carry_keep_o
 );
-    localparam INPUT_LANE_NUM = 4;
-    localparam BYTES_PER_LANE = LANE_SIZE/BYTE_SIZE;
-    localparam TOTAL_BYTES = DWIDTH/BYTE_SIZE;
-    localparam CARRY_KEEP_LOWER_INDEX = 8;
-    localparam CARRY_OVER_LOWER_INDEX = 64;
-    localparam BYTE_DIV_32_WIDTH = 3;
-    localparam INPUT_BYTES_NUM = DWIDTH/8;
+    localparam int INPUT_LANE_NUM = 4;
+    localparam int BYTES_PER_LANE = LANE_SIZE/BYTE_SIZE;
+    localparam int TOTAL_BYTES = DWIDTH/BYTE_SIZE;
+    localparam int CARRY_KEEP_LOWER_INDEX = 8;
+    localparam int CARRY_OVER_LOWER_INDEX = 64;
+    localparam int BYTE_DIV_32_WIDTH = 3;
+    localparam int INPUT_BYTES_NUM = DWIDTH/8;
 
     // Physical Limit: The absolute max rate defined by the spec (SHAKE128)
     // 1344 bits / 64 = 21 lanes. Indices 0 to 20 are valid.
@@ -91,7 +91,7 @@ module absorb_unit (
     wire [LANE_SIZE-1:0] split_lanes [INPUT_LANE_NUM];
     genvar i;
     generate
-        for (i = 0; i<INPUT_LANE_NUM; i=i+1) begin : split_loop
+        for (i = 0; i<INPUT_LANE_NUM; i=i+1) begin : g_split_loop
             assign split_lanes[i] = processed_msg[i*LANE_SIZE +: LANE_SIZE];
         end
     endgenerate

@@ -68,7 +68,8 @@ module iota_step (
 
         // Iterate through the 7 pre-defined bit positions for this round
         for (int j = 0; j<L_SIZE; j=j+1) begin
-                state_array_o[0][0][BITMAPPING[j]] = state_array_o[0][0][BITMAPPING[j]] ^ ROUNDCONSTANTS[round_index_i][j];
+                state_array_o[0][0][BITMAPPING[j]] = state_array_o[0][0][BITMAPPING[j]] ^
+                                                        ROUNDCONSTANTS[round_index_i][j];
         end
     end
 

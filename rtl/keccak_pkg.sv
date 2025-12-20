@@ -45,7 +45,7 @@ package keccak_pkg;
         PI_STEP,
         CHI_STEP,
         IOTA_STEP
-    } keccak_step;
+    } keccak_step_t;
 
     // State Array Dimension Bit Sizes
     parameter int LANE_SIZE = 64;

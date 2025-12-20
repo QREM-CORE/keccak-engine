@@ -25,7 +25,7 @@ module keccak_step_unit (
                         .state_array_o(iota_out));
 
     // Multiplexor for step mappings
-    always @(*) begin
+    always_comb begin
         case(step_sel_i)
             THETA_STEP          : state_array_o = theta_out;
             RHO_STEP            : state_array_o = rho_out;

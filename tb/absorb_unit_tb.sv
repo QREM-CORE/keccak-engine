@@ -8,10 +8,10 @@ import keccak_pkg::*;
 module absorb_unit_tb ();
 
     //Parameters & Constants
-    localparam RATE_SHA3_256 = 1088;    // 136 Bytes (17 Lanes)
-    localparam RATE_SHA3_512 = 576;     // 72  Bytes (9 Lanes)
-    localparam RATE_SHAKE256 = 1088;    // 136 Bytes (17 Lanes)
-    localparam RATE_SHAKE512 = 1344;    // 168 Bytes (21 Lanes)
+    localparam int RATE_SHA3_256 = 1088;    // 136 Bytes (17 Lanes)
+    localparam int RATE_SHA3_512 = 576;     // 72  Bytes (9 Lanes)
+    localparam int RATE_SHAKE256 = 1088;    // 136 Bytes (17 Lanes)
+    localparam int RATE_SHAKE512 = 1344;    // 168 Bytes (21 Lanes)
 
     // DUT signals
     logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_in;
@@ -267,8 +267,8 @@ module absorb_unit_tb ();
         expected_state[0][4] = 64'h9999_8888_7777_6666;
 
         check_results("TC6", 168, 1, expected_state,
-                      {64'b0, 64'hBAD0_BAD0_BAD0_BAD0, 64'hBAD0_BAD0_BAD0_BAD0, 64'hCAFE_F00D_CAFE_F00D},
-                      24'hFFFFFF);
+                      {64'b0, 64'hBAD0_BAD0_BAD0_BAD0, 64'hBAD0_BAD0_BAD0_BAD0,
+                      64'hCAFE_F00D_CAFE_F00D}, 24'hFFFFFF);
 
         print_state_fips(state_out);
 
