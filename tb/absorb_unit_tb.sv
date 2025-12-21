@@ -22,9 +22,9 @@ module absorb_unit_tb ();
     logic [DWIDTH-1:0]            msg_i;
     logic [KEEP_WIDTH-1:0]        keep_i;
     logic [BYTE_ABSORB_WIDTH-1:0] bytes_absorbed_o;
-    logic [CARRY_WIDTH-1:0]       carry_over_o;
+    logic [DWIDTH-1:0]            carry_over_o;
     logic                         has_carry_over_o;
-    logic [CARRY_KEEP_WIDTH-1:0]  carry_keep_o;
+    logic [KEEP_WIDTH-1:0]        carry_keep_o;
 
     // Instance
     absorb_unit dut (
@@ -67,7 +67,7 @@ module absorb_unit_tb ();
         input int exp_bytes_abs,
         input logic exp_has_carry,
         input logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] exp_state,
-        input logic [CARRY_WIDTH-1:0] exp_carry_data = '0,    // Default to 0
+        input logic [DWIDTH-1:0] exp_carry_data = '0,    // Default to 0
         input logic [CARRY_KEEP_WIDTH-1:0] exp_carry_keep = '0 // Default to 0 (Added Checker)
     );
         int error_count = 0;
@@ -291,6 +291,84 @@ module absorb_unit_tb ();
         expected_state[3][0] = 64'h1234_5678_9ABC_DEF0;
 
         check_results("TC7", 32, 0, expected_state);
+        print_state_fips(state_out);
+
+        // ==========================================================
+        // NEW TEST CASES FOR DYNAMIC CARRY
+        // ==========================================================
+
+        // ----------------------------------------------------------
+        // TEST CASE 8: SHA3-256 "Drifting Boundary"
+        // Cycle is mid-block. We have space.
+        // ----------------------------------------------------------
+        $display("\nTC8: SHA3-256 Dynamic (No Carry, Mid-Block)");
+        rate_i = RATE_SHA3_256;
+        bytes_absorbed_i = 24;
+        state_in = '0;
+        msg_i = {4{64'hEEEE_EEEE_EEEE_EEEE}};
+        keep_i = {32{1'b1}};
+
+        #10;
+
+        expected_state = '0;
+        // Start index = 24 / 8 = Lane 3 (Lane(3,0))
+        expected_state[3][0] = 64'hEEEE_EEEE_EEEE_EEEE; // 24-31
+        expected_state[4][0] = 64'hEEEE_EEEE_EEEE_EEEE; // 32-39
+        expected_state[0][1] = 64'hEEEE_EEEE_EEEE_EEEE; // 40-47
+        expected_state[1][1] = 64'hEEEE_EEEE_EEEE_EEEE; // 48-55
+
+        // Expected: 24 + 32 = 56 bytes. No carry.
+        check_results("TC8", 56, 0, expected_state, '0, '0);
+        print_state_fips(state_out);
+
+
+        // ----------------------------------------------------------
+        // TEST CASE 9: The "8-Bytes Left" Edge Case
+        // Rate 136. We are at 128 bytes (Lane 16 is empty).
+        // Input: 32 bytes valid.
+        // Expected: 8 Bytes absorbed (fills block). 24 Bytes carried.
+        // ----------------------------------------------------------
+        $display("\nTC9: The '8-Byte Left' Boundary (Max Aligned Carry)");
+        rate_i = RATE_SHA3_256;
+        bytes_absorbed_i = 128;
+        state_in = '0;
+
+        // Input 32 bytes. 8 fit. 24 carry.
+        // Lower 64-bits (0xDD..) should absorb. Upper 192 bits (0xCC..) should carry.
+        msg_i = { {3{64'hCCCC_CCCC_CCCC_CCCC}}, 64'hDDDD_DDDD_DDDD_DDDD };
+        keep_i = {32{1'b1}};
+
+        #10;
+
+        expected_state = '0;
+        expected_state[1][3] = 64'hDDDD_DDDD_DDDD_DDDD; // Lane 16 filled
+
+        // Carry: The top 3 words (0xCCCC...) shifted down to position 0.
+        check_results("TC9", 136, 1, expected_state,
+                      {64'b0, 192'hCCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC_CCCC},
+                      24'hFFFFFF);
+
+
+        // ----------------------------------------------------------
+        // TEST CASE 10: Garbage Data Masking
+        // Input has valid data in Byte 0, but GARBAGE in Bytes 1-31.
+        // Expected: Only Byte 0 is XORed. Garbage is ignored.
+        // ----------------------------------------------------------
+        $display("\nTC10: Garbage Data Masking");
+        rate_i = RATE_SHA3_256;
+        bytes_absorbed_i = 0;
+        state_in = '0;
+
+        // Msg has valid 0xAA, but then 0xFF garbage
+        msg_i = { {31{8'hFF}}, 8'hAA };
+        keep_i = 32'b00000000_00000000_00000000_00000001; // Only 1st byte valid
+
+        #10;
+
+        expected_state = '0;
+        expected_state[0][0] = 64'h0000_0000_0000_00AA; // Garbage 0xFFs must NOT appear here
+
+        check_results("TC10", 1, 0, expected_state, '0, '0);
         print_state_fips(state_out);
 
         $display("\n--- Testbench Complete ---");

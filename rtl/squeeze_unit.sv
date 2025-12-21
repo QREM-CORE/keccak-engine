@@ -11,9 +11,9 @@ module squeeze_unit (
     input  logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
     input  logic [MODE_SEL_WIDTH-1:0]       keccak_mode_i,
     input  logic [RATE_WIDTH-1:0]           rate_i,
-    input  logic [RATE_WIDTH-1:0]           bytes_squeezed_i,      // Counter from FSM
+    input  logic [BYTE_ABSORB_WIDTH-1:0]    bytes_squeezed_i,      // Counter from FSM
 
-    output logic [RATE_WIDTH-1:0]           bytes_squeezed_o,      // Next counter value
+    output logic [BYTE_ABSORB_WIDTH-1:0]    bytes_squeezed_o,      // Next counter value
     output logic                            squeeze_perm_needed_o, // Flag: Rate is empty!
     output logic [MAX_OUTPUT_DWIDTH-1:0]    data_o,                // 256 Bits
     output logic [MAX_OUTPUT_DWIDTH/8-1:0]  keep_o,                // Valid bytes

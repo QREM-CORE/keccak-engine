@@ -14,16 +14,16 @@ import keccak_pkg::*;
 // Compute state array after absorption
 module absorb_unit (
     input   logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
-    input   logic [RATE_WIDTH-1:0]        rate_i,
-    input   logic [BYTE_ABSORB_WIDTH-1:0] bytes_absorbed_i,
-    input   logic [DWIDTH-1:0]            msg_i,
-    input   logic [KEEP_WIDTH-1:0]        keep_i,
+    input   logic [RATE_WIDTH-1:0]          rate_i,
+    input   logic [BYTE_ABSORB_WIDTH-1:0]   bytes_absorbed_i,
+    input   logic [DWIDTH-1:0]              msg_i,
+    input   logic [KEEP_WIDTH-1:0]          keep_i,
 
     output  logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o,
-    output  logic [BYTE_ABSORB_WIDTH-1:0] bytes_absorbed_o,
-    output  logic                         has_carry_over_o,
-    output  logic [CARRY_WIDTH-1:0]       carry_over_o,
-    output  logic [CARRY_KEEP_WIDTH-1:0]  carry_keep_o
+    output  logic [BYTE_ABSORB_WIDTH-1:0]   bytes_absorbed_o,
+    output  logic                           has_carry_over_o,
+    output  logic [DWIDTH-1:0]              carry_over_o,
+    output  logic [KEEP_WIDTH-1:0]          carry_keep_o
 );
     localparam int INPUT_LANE_NUM = 4;
     localparam int BYTES_PER_LANE = LANE_SIZE/BYTE_SIZE;
@@ -37,68 +37,74 @@ module absorb_unit (
     // 1344 bits / 64 = 21 lanes. Indices 0 to 20 are valid.
     localparam int MAX_POSSIBLE_LANES = 21;
 
-    /* Need to XOR to correct portions of the data in.
-     * bytes_absorbed_i should always be a multiple of 64 bits at least...
-     * until the last read in, which can be any value of bytes.
-     * This means we dont have to worry about writing into a state that is unaligned (multiple of 64 bits).
-     */
-
-    // Valid Handling and carry over wires
-    logic [$clog2(KEEP_WIDTH + 1)-1:0] valid_byte_count;
-    assign valid_byte_count = $countones(keep_i);
-    logic [RATE_WIDTH-1:0] potential_absorbed;
-    assign potential_absorbed = bytes_absorbed_i + valid_byte_count;
-
-    logic [DWIDTH-1:0] processed_msg;
-
-    // Step 1: Process Carry and Input MSG
+    // ==========================================================
+    // Step 0: Mask Input Data
+    // ==========================================================
+    // Zero out invalid bytes in msg_i
+    logic [DWIDTH-1:0] msg_masked;
     always_comb begin
-        // Carry Over Needed
-        if (potential_absorbed > (rate_i >> 3)) begin // Convert rate_i bits to bytes (>> 3 == /8)
-            has_carry_over_o = 'b1;
-
-            /* Always know that the carry over is always the latter 192 bits of the input.
-             * Need to use valid bits to know which bytes are valid
-             */
-
-            /* Most Significant 24-bits of keep_i correspond to the most significant 192-bits
-              of the carry over (which is the most signficant 192 bits of the msg_i) */
-            carry_keep_o = keep_i[KEEP_WIDTH-1:CARRY_KEEP_LOWER_INDEX];
-            carry_over_o = msg_i[DWIDTH-1:CARRY_OVER_LOWER_INDEX];
-
-            // Only process the lower 64-bits of msg_i
-            processed_msg = {192'b0, msg_i[CARRY_OVER_LOWER_INDEX-1:0]};
-
-            // Guaranteed 8-bytes (64 bits) absorbed when there is a carry
-            bytes_absorbed_o = bytes_absorbed_i + 'd8;
-
-        // Carry not needed
-        end else begin
-            has_carry_over_o = 'b0;
-            carry_keep_o = 'b0;
-
-            for (int i = 0; i<TOTAL_BYTES; i=i+1) begin
-                processed_msg[i*BYTE_SIZE +: BYTE_SIZE] =   keep_i[i] ?
-                                                            msg_i[i*BYTE_SIZE +: BYTE_SIZE] :
-                                                            8'b0;
-            end
-
-            bytes_absorbed_o = potential_absorbed;
+        for (int b = 0; b < (DWIDTH/8); b++) begin
+            // Byte-wise masking
+            msg_masked[b*8 +: 8] = keep_i[b] ? msg_i[b*BYTE_SIZE +: BYTE_SIZE] : 8'h00;
         end
     end
 
-    // Step 2: Split the processed_msg into four 64-bit lanes
+    // ==========================================================
+    // Step 1: Calculate Space and Valid Counts
+    // ==========================================================
+    logic [RATE_WIDTH-1:0] rate_bytes;
+    assign rate_bytes = rate_i >> 3; // Convert bits to bytes
+
+    logic [RATE_WIDTH-1:0] space_in_block;
+    assign space_in_block = rate_bytes - bytes_absorbed_i;
+
+    logic [$clog2(KEEP_WIDTH + 1)-1:0] valid_byte_count;
+    assign valid_byte_count = $countones(keep_i);
+
+    // ==========================================================
+    // Step 2: Process Carry (Dynamic Logic)
+    // ==========================================================
+    always_comb begin
+        // Check if input data exceeds the remaining space in the rate block
+        if (valid_byte_count > space_in_block) begin
+            // Carry Over Needed
+            has_carry_over_o = 'b1;
+            bytes_absorbed_o = rate_bytes;
+
+            // Calculate Carry Data
+            // We take the upper bytes (that didn't fit) and SHIFT them down to 0.
+            // This aligns them for the NEXT absorption cycle.
+            // Example: space=8. We use msg[63:0]. Carry starts at msg[64].
+            // We shift msg right by 64 bits.
+            carry_over_o = DWIDTH'(msg_masked >> (space_in_block * 8));
+            carry_keep_o = KEEP_WIDTH'(keep_i >> space_in_block);
+
+        end else begin
+            // Carry not needed
+            has_carry_over_o    = '0;
+            bytes_absorbed_o    = bytes_absorbed_i + valid_byte_count;
+            carry_keep_o        = '0;
+            carry_over_o        = '0;
+        end
+    end
+
+    // ==========================================================
+    // Step 3: Split Lanes
+    // ==========================================================
+    // Split the msg_masked into four 64-bit lanes
     wire [LANE_SIZE-1:0] split_lanes [INPUT_LANE_NUM];
     genvar i;
     generate
         for (i = 0; i<INPUT_LANE_NUM; i=i+1) begin : g_split_loop
-            assign split_lanes[i] = processed_msg[i*LANE_SIZE +: LANE_SIZE];
+            assign split_lanes[i] = msg_masked[i*LANE_SIZE +: LANE_SIZE];
         end
     endgenerate
 
-    // Step 3: Find the corresponding lanes and XOR into result
-    logic [BYTE_DIV_32_WIDTH-1:0] block_beats_absorbed;
-    assign block_beats_absorbed = bytes_absorbed_i/INPUT_BYTES_NUM;
+    // ==========================================================
+    // Step 4: XOR into State (With Boundary Checks)
+    // ==========================================================
+    // Find the corresponding lanes and XOR into result
+    // Note: This logic assumes inputs are aligned to 64-bit boundaries relative to the full state.
     logic [4:0] rate_lane_limit;
     assign rate_lane_limit = rate_i[RATE_WIDTH-1:6]; // rate_i / 64
 
@@ -128,6 +134,8 @@ module absorb_unit (
             y = current_lane_idx / ROW_SIZE;
 
             // Check if lane is valid
+            // If we have a carry, the upper lanes of 'split_lanes' will correspond
+            // to current_lane_idx >= rate_lane_limit, so they will be IGNORED here.
             if (current_lane_idx < rate_lane_limit && current_lane_idx < MAX_POSSIBLE_LANES) begin
                 state_array_o[x][y] = state_array_i[x][y] ^ split_lanes[i];
             end

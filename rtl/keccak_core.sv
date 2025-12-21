@@ -78,27 +78,27 @@ module keccak_core (
     logic   [DWIDTH-1:0]            ABSORB_UNIT_MSG_I;
     logic   [KEEP_WIDTH-1:0]        ABSORB_UNIT_KEEP_I;
 
-    logic   [RATE_WIDTH-1:0]        bytes_absorbed; // # of bytes absorbed in the current rate block
-    reg     [CARRY_WIDTH-1:0]       carry_over;     // If rate is full, need to carry over values
+    logic   [BYTE_ABSORB_WIDTH-1:0] bytes_absorbed; // # of bytes absorbed in the current rate block
+    reg     [DWIDTH-1:0]            carry_over;     // If rate is full, need to carry over values
     reg                             has_carry_over; // Carry over flag
-    reg     [CARRY_KEEP_WIDTH-1:0]  carry_keep;
+    reg     [KEEP_WIDTH-1:0]        carry_keep;
     logic                           msg_recieved;   // Full message has been received
     // Absorb Module Outputs
     wire    [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] absorb_state_out;
-    logic   [RATE_WIDTH-1:0]                            bytes_absorbed_o;
+    logic   [BYTE_ABSORB_WIDTH-1:0]                     bytes_absorbed_o;
     logic                                               has_carry_over_o;
-    logic   [CARRY_KEEP_WIDTH-1:0]                      carry_keep_o;
-    logic   [CARRY_WIDTH-1:0]                           carry_over_o;
+    logic   [KEEP_WIDTH-1:0]                            carry_keep_o;
+    logic   [DWIDTH-1:0]                                carry_over_o;
 
     // Suffix/Padding Signals
     wire    [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] padding_state_out;
 
     // Squeeze Signals
-    logic                       squeeze_wr_en;
-    wire                        squeeze_perm_needed_wire;
-    wire                        squeeze_last_wire;
-    logic   [RATE_WIDTH-1:0]    bytes_squeezed;
-    wire    [RATE_WIDTH-1:0]    bytes_squeezed_o;
+    logic                           squeeze_wr_en;
+    wire                            squeeze_perm_needed_wire;
+    wire                            squeeze_last_wire;
+    logic   [BYTE_ABSORB_WIDTH-1:0] bytes_squeezed;
+    wire    [BYTE_ABSORB_WIDTH-1:0] bytes_squeezed_o;
 
     // Module to get sha3 parameters during initializtion
     sha3_setup sha3_setup (

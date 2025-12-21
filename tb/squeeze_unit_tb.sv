@@ -18,9 +18,9 @@ module squeeze_unit_tb ();
     logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_i;
     logic [MODE_SEL_WIDTH-1:0]      keccak_mode_i;
     logic [RATE_WIDTH-1:0]          rate_i;
-    logic [RATE_WIDTH-1:0]          bytes_squeezed_i;
+    logic [BYTE_ABSORB_WIDTH-1:0]   bytes_squeezed_i;
 
-    logic [RATE_WIDTH-1:0]          bytes_squeezed_o;
+    logic [BYTE_ABSORB_WIDTH-1:0]   bytes_squeezed_o;
     logic                           squeeze_perm_needed_o;
     logic [MAX_OUTPUT_DWIDTH-1:0]   data_o;
     logic [MAX_OUTPUT_DWIDTH/8-1:0] keep_o;

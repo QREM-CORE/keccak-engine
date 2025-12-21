@@ -26,14 +26,6 @@ package keccak_pkg;
     parameter int SUFFIX_WIDTH = BYTE_SIZE;
     parameter int SUFFIX_LEN_WIDTH = 3;
 
-    /* Carry Over Width
-     * Need to handle case of rate portion being full.
-     * 1344 % 256 = 64, 1088 % 256 = 64, and 576 % 256 = 64.
-     * This means that carry over of 256-64=192
-     */
-    parameter int CARRY_WIDTH = 192;
-    parameter int CARRY_KEEP_WIDTH = CARRY_WIDTH/8;
-
     parameter int BYTE_ABSORB_WIDTH = 8;
 
     // Different step selector options
