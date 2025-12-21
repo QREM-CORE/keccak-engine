@@ -73,7 +73,7 @@ module keccak_core (
     logic                           absorb_done; // Absorb stage fully complete flag
     logic                           complete_absorb_en;
     logic                           absorb_wr_en;
-    logic                           max_bytes_absorbed;
+    logic   [RATE_WIDTH-1:0]        max_bytes_absorbed;
     logic                           perm_en; // Enable Absorb Stage to permutate state
     logic   [DWIDTH-1:0]            ABSORB_UNIT_MSG_I;
     logic   [KEEP_WIDTH-1:0]        ABSORB_UNIT_KEEP_I;
@@ -140,7 +140,7 @@ module keccak_core (
         .state_array_i    (state_array),
         .rate_i           (rate),
         .bytes_absorbed_i (bytes_absorbed),
-        .suffix_i         (suffix_wire),
+        .suffix_i         (suffix),
         .state_array_o    (padding_state_out)
     );
 
