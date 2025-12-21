@@ -21,7 +21,7 @@ module keccak_step_unit (
     pi_step    u_pi    (.state_array_i(state_array_i), .state_array_o(pi_out));
     chi_step   u_chi   (.state_array_i(state_array_i), .state_array_o(chi_out));
     iota_step  u_iota  (.state_array_i(state_array_i),
-                        .round_index_i(round_index),
+                        .round_index_i(round_index_i),
                         .state_array_o(iota_out));
 
     // Multiplexor for step mappings

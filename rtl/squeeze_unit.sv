@@ -47,7 +47,11 @@ module squeeze_unit (
     assign start_bit_idx = bytes_squeezed_i * 8;
 
     // Extract the data window
-    assign data_o = state_linear[start_bit_idx +: MAX_OUTPUT_DWIDTH];
+    // assign data_o = state_linear[start_bit_idx +: MAX_OUTPUT_DWIDTH];
+    always_comb begin
+        data_o = 'b0;
+        data_o = state_linear[start_bit_idx +: MAX_OUTPUT_DWIDTH];
+    end
 
     // ==========================================================
     // 4. Valid Byte Calculation (Keep Signal)

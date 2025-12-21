@@ -96,6 +96,7 @@ module keccak_core (
     // Squeeze Signals
     logic                       squeeze_wr_en;
     wire                        squeeze_perm_needed_wire;
+    wire                        squeeze_last_wire;
     logic   [RATE_WIDTH-1:0]    bytes_squeezed;
     wire    [RATE_WIDTH-1:0]    bytes_squeezed_o;
 
@@ -112,13 +113,13 @@ module keccak_core (
         .state_array_i(state_array),
         .round_index_i(round_idx),
         .step_sel_i(step_sel),
-        .step_array_o(ksu_out)
+        .state_array_o(ksu_out)
     );
 
     // Absorb Functionality Module
     absorb_unit absorb_unit_i (
         .state_array_i(state_array),
-        .rate_i(rate_wire),
+        .rate_i(rate),
         .bytes_absorbed_i(bytes_absorbed),
         .msg_i(ABSORB_UNIT_MSG_I),
         .keep_i(ABSORB_UNIT_KEEP_I),
@@ -133,27 +134,27 @@ module keccak_core (
     assign ABSORB_UNIT_KEEP_I   = has_carry_over ? {  8'b0, carry_keep} : t_keep_i;
 
     // Max Byte Absorb Value
-    assign max_bytes_absorbed = rate_wire >> 3;
+    assign max_bytes_absorbed = rate >> 3;
 
     suffix_padder_unit suf_padder_i (
         .state_array_i    (state_array),
-        .rate_i           (rate_wire),
+        .rate_i           (rate),
         .bytes_absorbed_i (bytes_absorbed),
         .suffix_i         (suffix_wire),
         .state_array_o    (padding_state_out)
     );
 
     squeeze_unit squeeze_unit_i (
-        .state_array_i(state_array),
-        .keccak_mode_i(keccak_mode),
-        .rate_i(rate_wire),
-        .bytes_squeezed_i(bytes_squeezed),
+        .state_array_i          (state_array),
+        .keccak_mode_i          (keccak_mode),
+        .rate_i                 (rate),
+        .bytes_squeezed_i       (bytes_squeezed),
 
-        .bytes_squeezed_o(bytes_squeezed_o),
-        .squeeze_perm_needed_o(squeeze_perm_needed_wire),
-        .data_o(t_data_o),
-        .keep_o(t_keep_o),
-        .last_o(t_last_o)
+        .bytes_squeezed_o       (bytes_squeezed_o),
+        .squeeze_perm_needed_o  (squeeze_perm_needed_wire),
+        .data_o                 (t_data_o),
+        .keep_o                 (t_keep_o),
+        .last_o                 (squeeze_last_wire)
     );
 
     // Sequential Control FSM Updates
@@ -165,11 +166,11 @@ module keccak_core (
             msg_recieved        <= 'b0;
 
             // Absorb Signals
-            absorb_done     <= 'b0;
-            bytes_absorbed  <= 'b0;
-            carry_over      <= 'b0;
-            has_carry_over  <= 'b0;
-            carry_keep      <= 'b0;
+            absorb_done         <= 'b0;
+            bytes_absorbed      <= 'b0;
+            carry_over          <= 'b0;
+            has_carry_over      <= 'b0;
+            carry_keep          <= 'b0;
 
             // Squeeze Signals
             bytes_squeezed  <= 'b0;
@@ -180,10 +181,10 @@ module keccak_core (
             // Initialization
             if (init_wr_en) begin
                 // 1. Setup Parameters
-                keccak_mode <= keccak_mode_i;
-                rate        <= rate_wire;
-                capacity    <= capacity_wire;
-                suffix      <= suffix_wire;
+                keccak_mode     <= keccak_mode_i;
+                rate            <= rate_wire;
+                capacity        <= capacity_wire;
+                suffix          <= suffix_wire;
 
                 // 2. CRITICAL: Wipe the State Logic
                 state_array     <= '0;  // Must be 0 before starting new Absorb
@@ -267,8 +268,12 @@ module keccak_core (
 
         // Absorb Wires
         absorb_wr_en        = 1'b0;
-        complete_absorb_en     = 1'b0;
-        perm_en      = 1'b0;
+        complete_absorb_en  = 1'b0;
+        perm_en             = 1'b0;
+
+        // Step Mapping
+        rst_round_idx_en    = 1'b0;
+        inc_round_idx_en    = 1'b0;
 
         // Default Output Signals
         t_ready_o           = 1'b0;
@@ -294,12 +299,14 @@ module keccak_core (
 
                 // Step 2: Check if there is a unhandled carry over
                 end else if (has_carry_over) begin
+                    next_state = STATE_ABSORB;
                     absorb_wr_en = 1'b1;
                     state_array_wr_en = 1'b1;
                     state_array_in_sel = ABSORB_SEL;
 
                 // Step 3: Check if there is valid input and to process if so
                 end else if (t_valid_i) begin
+                    next_state = STATE_ABSORB;
                     absorb_wr_en = 1'b1;
                     state_array_wr_en = 1'b1;
                     state_array_in_sel = ABSORB_SEL;
@@ -382,10 +389,11 @@ module keccak_core (
 
                 // PRIORITY 2: Output Data
                 end else if (t_ready_i) begin
-                    t_valid_o = 1'b1;
+                    t_valid_o   = 1'b1;
+                    t_last_o    = squeeze_last_wire;
 
                     // A. Check Fixed Hash Done (SHA3-*)
-                    if (t_last_o) begin
+                    if (squeeze_last_wire) begin
                         next_state = STATE_IDLE;
                         init_wr_en = 1'b1;
 
