@@ -13,8 +13,8 @@ module chi_step_tb();
 
     // Instantiate DUT
     chi_step dut (
-        .state_array_in(state_in),
-        .state_array_out(state_out)
+        .state_array_i(state_in),
+        .state_array_o(state_out)
     );
 
     // ==========================================================

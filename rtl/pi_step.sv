@@ -8,8 +8,8 @@
 import keccak_pkg::*;
 
 module pi_step (
-    input   [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_in,
-    output  [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_out
+    input   [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
+    output  [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
 );
     wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] permuted;
 
@@ -20,11 +20,11 @@ module pi_step (
                 // Transformation as specified by FIPS202 3.2.3
                 localparam int SRCX = (x + 3*y) % 5;
                 localparam int SRCY = x;
-                assign permuted[x][y] = state_array_in[SRCX][SRCY];
+                assign permuted[x][y] = state_array_i[SRCX][SRCY];
             end
         end
     endgenerate
 
-    assign state_array_out = permuted;
+    assign state_array_o = permuted;
 
 endmodule

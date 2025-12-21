@@ -1,18 +1,52 @@
 package keccak_pkg;
-    typedef enum logic [2:0] {
+    // Misc. Bit Sizes
+    parameter int BYTE_SIZE = 8;
+
+    // Keccak Structure
+    parameter int DWIDTH = 256; // Input data is 32 bytes
+    parameter int DATA_BYTE_NUM = DWIDTH/8;
+    parameter int KEEP_WIDTH = DWIDTH/8; // 1 bit for every data byte
+    parameter int MAX_OUTPUT_DWIDTH = 256;
+    parameter int X_WIDTH = $clog2(ROW_SIZE);
+    parameter int Y_WIDTH = $clog2(COL_SIZE);
+
+    // Different Keccak Modes
+    typedef enum {
         SHA3_256,
         SHA3_512,
         SHAKE128,
         SHAKE256
     } keccak_mode;
+    parameter int MODE_NUM = 4;
+    parameter int MODE_SEL_WIDTH = $clog2(MODE_NUM);
 
-    // Misc. Bit Sizes
-    parameter int BYTE_SIZE = 8;
+    // Setup Parameters
+    parameter int CAPACITY_WIDTH = 11;
+    parameter int RATE_WIDTH = 11;
+    parameter int SUFFIX_WIDTH = BYTE_SIZE;
+    parameter int SUFFIX_LEN_WIDTH = 3;
+
+    parameter int BYTE_ABSORB_WIDTH = 8;
+
+    // Different step selector options
+    typedef enum {
+        IDLE_STEP,
+        ZERO_STEP,
+        THETA_STEP,
+        RHO_STEP,
+        PI_STEP,
+        CHI_STEP,
+        IOTA_STEP
+    } keccak_step_t;
 
     // State Array Dimension Bit Sizes
     parameter int LANE_SIZE = 64;
     parameter int ROW_SIZE  = 5;
     parameter int COL_SIZE  = 5;
+
+    // Step Map
+    parameter int STEP_NUM = 5;
+    parameter int STEP_SEL_WIDTH = $clog2(STEP_NUM);
 
     // Iota Step
     parameter int ROUND_INDEX_SIZE = 5;

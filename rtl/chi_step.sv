@@ -9,8 +9,8 @@
 import keccak_pkg::*;
 
 module chi_step (
-    input   [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_in,
-    output  [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_out
+    input   [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
+    output  [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
 );
     logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] chi_step_1;
     logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] chi_step_2;
@@ -23,16 +23,16 @@ module chi_step (
             for (int x = 0; x<ROW_SIZE; x = x + 1) begin
                 automatic int XP1 = (x+1) % 5;
                 automatic int XP2 = (x+2) % 5;
-                chi_step_1[x][y] = ~state_array_in[XP1][y] & state_array_in[XP2][y];
+                chi_step_1[x][y] = ~state_array_i[XP1][y] & state_array_i[XP2][y];
             end
         end
         // Step 2: XOR original lane with result of step 1
         for (int y = 0; y<COL_SIZE; y = y + 1) begin
             for (int x = 0; x<ROW_SIZE; x = x + 1) begin
-                chi_step_2[x][y] = state_array_in[x][y] ^ chi_step_1[x][y];
+                chi_step_2[x][y] = state_array_i[x][y] ^ chi_step_1[x][y];
             end
         end
     end
 
-    assign state_array_out = chi_step_2;
+    assign state_array_o = chi_step_2;
 endmodule
