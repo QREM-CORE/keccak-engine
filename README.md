@@ -42,18 +42,21 @@ The core utilizes a **Sponge Construction** architecture controlled by a central
 
 | Signal Group | Name | Direction | Width | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **System** | `clk` | Input | 1 | System Clock |
+| **System** | `clk` | Input | 1 | System Clock (Rising Edge) |
 | | `rst` | Input | 1 | Synchronous Active-High Reset |
 | **Control** | `start_i` | Input | 1 | Pulses high to initialize core for new hash |
-| | `keccak_mode_i` | Input | 2 | Mode Selector (See Package) |
-| | `stop_i` | Input | 1 | Stops output generation (Used for XOF modes) |
-| **AXI Sink** | `t_data_i` | Input | W | Input Message Data |
+| | `keccak_mode_i` | Input | `MODE_SEL_WIDTH` | Mode Selector (SHA3-256, SHA3-512, SHAKE128, SHAKE256) |
+| | `stop_i` | Input | 1 | Stops output generation (Required for XOF modes) |
+| **AXI Sink** | `t_data_i` | Input | `DWIDTH` | Input Message Data |
 | | `t_valid_i` | Input | 1 | Valid flag for input data |
-| | `t_last_i` | Input | 1 | Indicates last transfer of message |
-| | `t_ready_o` | Output | 1 | Core Ready (Backpressure) |
-| **AXI Source** | `t_data_o` | Output | W | Hash Output Data |
+| | `t_last_i` | Input | 1 | Indicates the final transfer of the message |
+| | `t_keep_i` | Input | `KEEP_WIDTH` | Byte Enable (1 bit per byte) for valid data bytes |
+| | `t_ready_o` | Output | 1 | Core Ready (Backpressure) - 0 indicates core is busy |
+| **AXI Source** | `t_data_o` | Output | `MAX_OUTPUT_DWIDTH` | Hash Output Data (256-bit bus) |
 | | `t_valid_o` | Output | 1 | Valid flag for output hash |
-| | `t_last_o` | Output | 1 | End of Hash (Fixed modes only) |
+| | `t_last_o` | Output | 1 | End of Hash indicator (Fixed-length modes only) |
+| | `t_keep_o` | Output | `KEEP_WIDTH` | Byte Enable (1 bit per byte) for valid output bytes |
+| | `t_ready_i` | Input | 1 | Downstream Ready (Backpressure from receiver) |
 
 ## 💻 Simulation
 
