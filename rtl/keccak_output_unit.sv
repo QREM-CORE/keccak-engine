@@ -1,17 +1,27 @@
 /*
- * Module Name: squeeze_unit
+ * Module Name: keccak_output_unit
  * Author: Kiet Le
- * Description: Squeeze/output state array
- * NOTE: Purely combinational so far. Can be pipelined for higher clock speed if needed.
+ * Description:
+ * - Implements the "Squeeze" phase of the sponge construction.
+ * - Extracts data from the State Array in chunks of 'MAX_OUTPUT_DWIDTH' (e.g., 256 bits).
+ * - Linearizes the 3D State Array (Lane[x][y]) into a bitstream for output.
+ * - Manages Flow Control:
+ * 1. Fixed-Length (SHA3-256/512): Asserts 'last_o' when the digest size is reached.
+ * 2. Variable-Length (SHAKE128/256): Runs indefinitely until externally stopped.
+ * 3. Rate Boundaries: Detects when the Rate block is exhausted via 'squeeze_perm_needed_o'
+ * to trigger the FSM to permute the state again (for multi-block XOF output).
  */
+
+`default_nettype none
+`timescale 1ns / 1ps
 
 import keccak_pkg::*;
 
-module squeeze_unit (
+module keccak_output_unit (
     input  logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
-    input  logic [MODE_SEL_WIDTH-1:0]       keccak_mode_i,
-    input  logic [RATE_WIDTH-1:0]           rate_i,
-    input  logic [BYTE_ABSORB_WIDTH-1:0]    bytes_squeezed_i,      // Counter from FSM
+    input  wire  [MODE_SEL_WIDTH-1:0]       keccak_mode_i,
+    input  wire  [RATE_WIDTH-1:0]           rate_i,
+    input  wire  [BYTE_ABSORB_WIDTH-1:0]    bytes_squeezed_i,      // Counter from FSM
 
     output logic [BYTE_ABSORB_WIDTH-1:0]    bytes_squeezed_o,      // Next counter value
     output logic                            squeeze_perm_needed_o, // Flag: Rate is empty!
@@ -20,14 +30,14 @@ module squeeze_unit (
     output logic                            last_o                 // End of Hash
 );
     // ==========================================================
-    // 1. Calculate Next Counter Value (Added Logic)
+    // 1. CALCULATE NEXT COUNTER VALUE
     // ==========================================================
     // Simply increment by the bus width (32 bytes).
     // The FSM is responsible for resetting this to 0 when permutation happens.
     assign bytes_squeezed_o = bytes_squeezed_i + (MAX_OUTPUT_DWIDTH / 8);
 
     // ==========================================================
-    // 2. Flatten the 2D State Array into 1D
+    // 2. FLATTEN THE 2D STATE ARRAY INTO 1D
     // ==========================================================
     logic [1599:0] state_linear;
     always_comb begin
@@ -40,7 +50,7 @@ module squeeze_unit (
     end
 
     // ==========================================================
-    // 3. Calculate Output Window
+    // 3. CALCULATE OUTPUT WINDOW
     // ==========================================================
     // We want 256 bits (32 bytes) starting at bytes_squeezed_i
     logic [10:0] start_bit_idx;
@@ -54,7 +64,7 @@ module squeeze_unit (
     end
 
     // ==========================================================
-    // 4. Valid Byte Calculation (Keep Signal)
+    // 4. VALID BYTE CALCULATION (KEEP SIGNAL)
     // ==========================================================
     logic [RATE_WIDTH-1:0] bytes_remaining_in_rate;
     // Note: rate_i is bits, convert to bytes.
@@ -72,13 +82,13 @@ module squeeze_unit (
     end
 
     // ==========================================================
-    // 5. SHAKE Permutation Trigger
+    // 5. SHAKE PERMUTATION TRIGGER
     // ==========================================================
     // If the remaining bytes <= what we are about to output, we are draining the block.
     assign squeeze_perm_needed_o = (bytes_remaining_in_rate <= (MAX_OUTPUT_DWIDTH/8));
 
     // ==========================================================
-    // 6. Last Signal Logic
+    // 6. LAST SIGNAL LOGIC
     // ==========================================================
     always_comb begin
         case (keccak_mode_i)
@@ -94,3 +104,5 @@ module squeeze_unit (
     end
 
 endmodule
+
+`default_nettype wire

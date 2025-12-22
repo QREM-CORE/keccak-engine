@@ -5,7 +5,7 @@
 
 import keccak_pkg::*;
 
-module squeeze_unit_tb ();
+module keccak_output_unit_tb ();
 
     // ==========================================================
     // Parameters & Constants
@@ -27,7 +27,7 @@ module squeeze_unit_tb ();
     logic                           last_o;
 
     // Instance
-    squeeze_unit dut (
+    keccak_output_unit dut (
         .state_array_i          (state_i),
         .keccak_mode_i          (keccak_mode_i),
         .rate_i                 (rate_i),

@@ -1,16 +1,25 @@
 /*
  * Module Name: rho_step
  * Author: Kiet Le
- * Description: The effect of ρ is to rotate the bits of each lane by a length, called the offset,
- *              which depends on the fixed x and y coordinates of the lane.
- * NOTE: Purely combinational so far. Can be pipelined for higher clock speed if needed.
+ * Description:
+ * - Implements the ρ (Rho) step mapping, responsible for intra-lane diffusion.
+ * - Performs a circular bitwise left-rotation on each of the 25 lanes individually.
+ * - The rotation offset is a fixed constant unique to each (x,y) coordinate,
+ * defined by the Keccak algorithm's offset matrix.
+ * - Hardware Note: Since the rotation amounts are compile-time constants,
+ * synthesis tools implement this entirely via wire re-routing (zero logic gates),
+ * making it extremely area-efficient.
+ * - Reference: FIPS 202 Section 3.2.2
  */
+
+`default_nettype none
+`timescale 1ns / 1ps
 
 import keccak_pkg::*;
 
 module rho_step (
-    input   [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
-    output  [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
+    input   wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
+    output  wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
 );
     // Rotation Offsets of 64 bit lanes
     // Y=0 goes right to Y=4
@@ -48,3 +57,5 @@ module rho_step (
     endgenerate
 
 endmodule
+
+`default_nettype wire

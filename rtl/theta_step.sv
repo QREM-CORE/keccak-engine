@@ -1,15 +1,25 @@
 /*
  * Module Name: theta_step
  * Author: Kiet Le
- * Description: Theta in Keccak is a diffusion step that mixes each bit with a parity of neighboring columns.
- * NOTE: Purely combinational so far. Can be pipelined for higher clock speed if needed.
+ * Description:
+ * - Implements the θ (Theta) step mapping, the primary linear diffusion layer.
+ * - Purpose: Mixes bits across the entire state array to propagate changes quickly.
+ * - Operation (3 Stages):
+ * 1. Column Parity (C): XORs all 5 lanes in each column (x) to verify parity.
+ * 2. Mixing Delta (D): Computes a 'mask' by XORing the parity of the Left Neighbor (x-1)
+ * with the Rotated Parity of the Right Neighbor (x+1).
+ * 3. Application: XORs this mask (D) into every lane of the original column.
+ * - Reference: FIPS 202 Section 3.2.1
  */
+
+`default_nettype none
+`timescale 1ns / 1ps
 
 import keccak_pkg::*;
 
 module theta_step (
-    input   [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
-    output  [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
+    input   wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
+    output  wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
 );
     // Column Parity Wires (Algorithm 1: C matrix in FIPS202)
     wire [4:0][LANE_SIZE-1:0] C;
@@ -63,3 +73,5 @@ module theta_step (
     endgenerate
 
 endmodule
+
+`default_nettype wire

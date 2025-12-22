@@ -1,15 +1,25 @@
 /*
  * Module Name: pi_step
  * Author: Kiet Le
- * Description: The effect of π is to rearrange the positions of the lanes.
- * NOTE: Purely combinational so far. Can be pipelined for higher clock speed if needed.
+ * Description:
+ * - Implements the π (Pi) step mapping, which permutes the positions of the
+ * 25 lanes within the State Array.
+ * - Logic: Shifts lanes based on the arithmetic formula:
+ * A'[x, y] = A[(x + 3y) mod 5, x]
+ * - Implementation: This module contains NO logic gates. It is implemented
+ * entirely via wire routing (hardwired permutation), consuming zero
+ * combinational area on FPGAs/ASICs.
+ * - Reference: FIPS 202 Section 3.2.3
  */
+
+`default_nettype none
+`timescale 1ns / 1ps
 
 import keccak_pkg::*;
 
 module pi_step (
-    input   [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
-    output  [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
+    input   wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
+    output  wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
 );
     wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] permuted;
 
@@ -28,3 +38,5 @@ module pi_step (
     assign state_array_o = permuted;
 
 endmodule
+
+`default_nettype wire

@@ -1,16 +1,23 @@
 /*
  * Module Name: chi_step
  * Author: Kiet Le
- * Description: The χ (chi) step mapping is the non-linear transformation step.
- *              Based off of FIPS202 Section 3.2.4
- * NOTE: Purely combinational so far. Can be pipelined for higher clock speed if needed.
+ * Description:
+ * - Implements the χ (Chi) step mapping, the only non-linear layer in Keccak.
+ * - Acts effectively as a parallel S-box applied to each row independently.
+ * - Logic: Each bit is XORed with the logical AND of the inverted neighbor
+ * and the neighbor's neighbor:
+ * A'[x,y] = A[x,y] XOR ((NOT A[x+1,y]) AND A[x+2,y])
+ * - Reference: FIPS 202 Section 3.2.4
  */
+
+`default_nettype none
+`timescale 1ns / 1ps
 
 import keccak_pkg::*;
 
 module chi_step (
-    input   [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
-    output  [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
+    input   wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
+    output  wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
 );
     logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] chi_step_1;
     logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] chi_step_2;
@@ -36,3 +43,5 @@ module chi_step (
 
     assign state_array_o = chi_step_2;
 endmodule
+
+`default_nettype wire
