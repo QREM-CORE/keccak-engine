@@ -275,6 +275,9 @@ module keccak_core (
         rst_round_idx_en    = 1'b0;
         inc_round_idx_en    = 1'b0;
 
+        // Squeeze Signals
+        squeeze_wr_en       = 1'b0;
+
         // Default Output Signals
         t_ready_o           = 1'b0;
         t_valid_o           = 1'b0;

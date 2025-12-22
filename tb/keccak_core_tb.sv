@@ -141,33 +141,40 @@ module keccak_core_tb;
             // Or just rely on padding in core. Assuming standard AXI behavior:
             @(posedge clk);
             while (!t_ready_o) @(posedge clk);
-            t_valid_i = 1;
-            t_last_i  = 1;
-            t_keep_i  = '0;
-            t_data_i  = '0;
+            t_valid_i <= 1;
+            t_last_i  <= 1;
+            t_keep_i  <= '0;
+            t_data_i  <= '0;
             @(posedge clk);
-            t_valid_i = 0;
-            t_last_i  = 0;
+            t_valid_i <= 0;
+            t_last_i  <= 0;
             return;
         end
 
-        // Drive Data in 256-bit chunks
+        // Loop until all bytes sent
         while (sent_bytes < total_bytes) begin
-            // Wait for handshake opportunity
-            if (!t_valid_i || t_ready_o) begin
-                @(posedge clk); // Move to next edge
 
-                t_valid_i = 1;
-                t_data_i  = '0;
-                t_keep_i  = '0;
-                t_last_i  = 0;
+            // 1. Wait for the clock edge
+            @(posedge clk);
+
+            // 2. NOW check signals.
+            // If valid is low (we are starting) OR ready is high (RTL accepted prev data)
+            // Note: Since we are at the edge, we sample the pre-update value of ready
+            if (!t_valid_i || t_ready_o) begin
+
+                // Drive the NEW data using Non-Blocking Assignments (<=).
+                // Updates happen at the end of the time step (clean waveform).
+                t_valid_i <= 1;
+                t_data_i  <= '0;
+                t_keep_i  <= '0;
+                t_last_i  <= 0;
 
                 // Pack up to 32 bytes (BYTES_PER_BEAT) into t_data_i
                 // FIPS Order: Msg Byte 0 -> t_data_i[7:0]
                 for (k = 0; k < BYTES_PER_BEAT; k++) begin
                     if ((sent_bytes + k) < total_bytes) begin
-                        t_data_i[k*8 +: 8] = msg_bytes[sent_bytes + k];
-                        t_keep_i[k]        = 1'b1;
+                        t_data_i[k*8 +: 8] <= msg_bytes[sent_bytes + k];
+                        t_keep_i[k]        <= 1'b1;
                     end
                 end
 
@@ -175,22 +182,20 @@ module keccak_core_tb;
 
                 // Assert T_LAST if this is the final chunk
                 if (sent_bytes >= total_bytes) begin
-                    t_last_i = 1'b1;
+                    t_last_i <= 1'b1;
                 end
-            end else begin
-                @(posedge clk); // Wait while valid is high but ready is low
+
             end
+            // If ready was low (Busy), we do nothing.
+            // The loop repeats, waits for next @(posedge clk), and checks ready again.
         end
 
-        // Wait for final handshake to complete
-        do begin
-            @(posedge clk);
-        end while (!(t_valid_i && t_ready_o));
-
-        t_valid_i = 0;
-        t_last_i  = 0;
-        t_keep_i  = 0;
-        t_data_i  = 0;
+        // Cleanup
+        @(posedge clk);
+        while (!t_ready_o) @(posedge clk); // Wait for final handshake if pending
+        t_valid_i <= 0;
+        t_last_i  <= 0;
+        t_keep_i  <= 0;
     endtask
 
     // =====================================================================
