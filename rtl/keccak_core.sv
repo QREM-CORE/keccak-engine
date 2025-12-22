@@ -1,3 +1,9 @@
+/*
+ * Module Name: keccak_core
+ * Author: Kiet Le
+ * Description: Top level module of Keccak Core
+ */
+
 import keccak_pkg::*;
 
 module keccak_core (
@@ -21,11 +27,12 @@ module keccak_core (
     output  logic [KEEP_WIDTH-1:0]          t_keep_o,
     input   logic                           t_ready_i
 );
-    /*
-     * 1600-bit State Array using to hold the state of keccak core.
-     * See FIPS202 Section 3.1.1 for more information on state array.
-     */
-    reg [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array;
+    // ==========================================================
+    // 1. KECCAK LOGIC, WIRES, REGISTERS AND ENUMS
+    // ==========================================================
+
+    // 1A. Enum Instantiations
+    // ----------------------------------------------------------
 
     // FSM States
     typedef enum {
@@ -49,115 +56,204 @@ module keccak_core (
     } sa_in_sel_t;
     sa_in_sel_t state_array_in_sel;
 
-    // KSU Signals
-    wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] ksu_out;
-    reg [ROUND_INDEX_SIZE-1:0] round_idx;
-    reg [STEP_SEL_WIDTH-1:0] step_sel;
+    // 1B. Registers
+    // ----------------------------------------------------------
 
-    // SHA3 Paramter Setup Signals
-    wire    [RATE_WIDTH-1:0] rate_wire;
-    logic   [RATE_WIDTH-1:0] rate;
-    wire    [CAPACITY_WIDTH-1:0] capacity_wire;
-    logic   [CAPACITY_WIDTH-1:0] capacity;
-    wire    [SUFFIX_WIDTH-1:0] suffix_wire;
-    logic   [SUFFIX_WIDTH-1:0] suffix;
+    // 1600-bit State Array using to hold the state of keccak core.
+    // See FIPS202 Section 3.1.1 for more information on state array.
+    reg [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array;
 
-    // FSM Control Signals
+    // KSU Permutation Registers
+    reg [ROUND_INDEX_SIZE-1:0]      round_idx;
+    reg [STEP_SEL_WIDTH-1:0]        step_sel;
+
+    // Keccak Parameter Setup Registers
+    reg [RATE_WIDTH-1:0]            rate;
+    reg [CAPACITY_WIDTH-1:0]        capacity;
+    reg [SUFFIX_WIDTH-1:0]          suffix;
+
+    // Keccak Mode Register
+    reg [MODE_SEL_WIDTH-1:0]        keccak_mode;
+
+    // Absorb Phase Registers
+    reg                             absorb_done; // Absorb stage fully complete flag
+    reg     [BYTE_ABSORB_WIDTH-1:0] bytes_absorbed; // # of bytes absorbed in the current rate block
+    reg     [DWIDTH-1:0]            carry_over;     // If rate is full, need to carry over values
+    reg                             has_carry_over; // Carry over flag
+    reg     [KEEP_WIDTH-1:0]        carry_keep;
+    reg                             msg_recieved;   // Full message has been received
+
+    // Squeeze Signals
+    logic   [BYTE_ABSORB_WIDTH-1:0] bytes_squeezed;
+
+    // 1C. Enable Wires
+    // ----------------------------------------------------------
+
+    // Misc. FSM Enables
     logic state_array_wr_en;
-    logic [MODE_SEL_WIDTH-1:0] keccak_mode;
     logic init_wr_en;
     logic rst_round_idx_en;
     logic inc_round_idx_en;
 
-    // Absorbing Signals
-    logic                           absorb_done; // Absorb stage fully complete flag
-    logic                           complete_absorb_en;
-    logic                           absorb_wr_en;
-    logic   [RATE_WIDTH-1:0]        max_bytes_absorbed;
-    logic                           perm_en; // Enable Absorb Stage to permutate state
-    logic   [DWIDTH-1:0]            ABSORB_UNIT_MSG_I;
-    logic   [KEEP_WIDTH-1:0]        ABSORB_UNIT_KEEP_I;
+    // Absorb Enable Wires
+    logic absorb_wr_en;
+    logic complete_absorb_en;
 
-    logic   [BYTE_ABSORB_WIDTH-1:0] bytes_absorbed; // # of bytes absorbed in the current rate block
-    reg     [DWIDTH-1:0]            carry_over;     // If rate is full, need to carry over values
-    reg                             has_carry_over; // Carry over flag
-    reg     [KEEP_WIDTH-1:0]        carry_keep;
-    logic                           msg_recieved;   // Full message has been received
-    // Absorb Module Outputs
-    wire    [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] absorb_state_out;
-    logic   [BYTE_ABSORB_WIDTH-1:0]                     bytes_absorbed_o;
-    logic                                               has_carry_over_o;
-    logic   [KEEP_WIDTH-1:0]                            carry_keep_o;
-    logic   [DWIDTH-1:0]                                carry_over_o;
+    // Permutation Enable
+    logic perm_en;
 
-    // Suffix/Padding Signals
-    wire    [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] padding_state_out;
+    // Squeeze Enable
+    logic squeeze_wr_en;
 
-    // Squeeze Signals
-    logic                           squeeze_wr_en;
-    wire                            squeeze_perm_needed_wire;
-    wire                            squeeze_last_wire;
-    logic   [BYTE_ABSORB_WIDTH-1:0] bytes_squeezed;
-    wire    [BYTE_ABSORB_WIDTH-1:0] bytes_squeezed_o;
+    // 1D. Module Wires and Registers
+    // ----------------------------------------------------------
 
-    // Module to get sha3 parameters during initializtion
-    sha3_setup sha3_setup (
-        .keccak_mode_i(keccak_mode_i),
-        .rate_o(rate_wire),
-        .capacity_o(capacity_wire),
-        .suffix_o(suffix_wire)
-    );
+    // Keccak Parameter Unit (KPU) Module Wires
+    wire [MODE_SEL_WIDTH-1:0]       KPU_MODE_I;
 
-    // Keccak Step Mapping Operations Module
-    keccak_step_unit KSU (
-        .state_array_i(state_array),
-        .round_index_i(round_idx),
-        .step_sel_i(step_sel),
-        .state_array_o(ksu_out)
-    );
+    wire [RATE_WIDTH-1:0]           KPU_RATE_O;
+    wire [CAPACITY_WIDTH-1:0]       KPU_CAPACITY_O;
+    wire [SUFFIX_WIDTH-1:0]         KPU_SUFFIX_O;
 
-    // Absorb Functionality Module
-    absorb_unit absorb_unit_i (
-        .state_array_i(state_array),
-        .rate_i(rate),
-        .bytes_absorbed_i(bytes_absorbed),
-        .msg_i(ABSORB_UNIT_MSG_I),
-        .keep_i(ABSORB_UNIT_KEEP_I),
+    // Keccak Step Unit (KSU) Module Wires
+    wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] KSU_STATE_ARRAY_I;
+    wire [ROUND_INDEX_SIZE-1:0]     KSU_ROUND_INDEX_I;
+    wire [STEP_SEL_WIDTH-1:0]       KSU_STEP_SEL_I;
 
-        .state_array_o(absorb_state_out),
-        .bytes_absorbed_o(bytes_absorbed_o),
-        .has_carry_over_o(has_carry_over_o),
-        .carry_keep_o(carry_keep_o),
-        .carry_over_o(carry_over_o)
-    );
-    assign ABSORB_UNIT_MSG_I    = has_carry_over ? { 64'b0, carry_over} : t_data_i;
-    assign ABSORB_UNIT_KEEP_I   = has_carry_over ? {  8'b0, carry_keep} : t_keep_i;
+    wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] KSU_STATE_ARRAY_O;
+
+    // Keccak Absorb Unit (KAU) Module Wires
+    wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] KAU_STATE_ARRAY_I;
+    wire [RATE_WIDTH-1:0]           KAU_RATE_I;
+    wire [BYTE_ABSORB_WIDTH-1:0]    KAU_BYTES_ABSORBED_I;
+    wire [DWIDTH-1:0]               KAU_MSG_I;
+    wire [KEEP_WIDTH-1:0]           KAU_KEEP_I;
+
+    wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] KAU_STATE_ARRAY_O;
+    wire [BYTE_ABSORB_WIDTH-1:0]    KAU_BYTES_ABSORBED_O;
+    wire                            KAU_HAS_CARRY_OVER_O;
+    wire [KEEP_WIDTH-1:0]           KAU_CARRY_KEEP_O;
+    wire [DWIDTH-1:0]               KAU_CARRY_OVER_O;
+
+    // Suffix Padder Unit (SPU) Module Wires
+    wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] SPU_STATE_ARRAY_I;
+    wire [RATE_WIDTH-1:0]           SPU_RATE_I;
+    wire [BYTE_ABSORB_WIDTH-1:0]    SPU_BYTES_ABSORBED_I;
+    wire [SUFFIX_WIDTH-1:0]         SPU_SUFFIX_I;
+
+    wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] SPU_STATE_ARRAY_O;
+
+    // Squeeze Output Unit (KOU) Module Wires
+    wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] KOU_STATE_ARRAY_I;
+    wire [MODE_SEL_WIDTH-1:0]       KOU_MODE_I;
+    wire [RATE_WIDTH-1:0]           KOU_RATE_I;
+    wire [BYTE_ABSORB_WIDTH-1:0]    KOU_BYTES_SQUEEZED_I;
+
+    wire [BYTE_ABSORB_WIDTH-1:0]    KOU_BYTES_SQUEEZED_O;
+    wire                            KOU_PERM_NEEDED_O;
+    wire [DWIDTH-1:0]               KOU_DATA_O;
+    wire [KEEP_WIDTH-1:0]           KOU_KEEP_O;
+    wire                            KOU_LAST_O;
+
+    // 1E. Wire Assignments
+    // ----------------------------------------------------------
 
     // Max Byte Absorb Value
-    assign max_bytes_absorbed = rate >> 3;
+    logic [RATE_WIDTH-1:0] max_bytes_absorbed;
+    assign max_bytes_absorbed   = rate >> 3;
 
-    suffix_padder_unit suf_padder_i (
-        .state_array_i    (state_array),
-        .rate_i           (rate),
-        .bytes_absorbed_i (bytes_absorbed),
-        .suffix_i         (suffix),
-        .state_array_o    (padding_state_out)
+    assign t_data_o             = KOU_DATA_O;
+    assign t_keep_o             = KOU_KEEP_O;
+
+    // ==========================================================
+    // 2. HELPER MODULE INSTANTIATIONS
+    // ==========================================================
+
+    // 2A. KECCAK PARAMETER UNIT (KPU)
+    // ----------------------------------------------------------
+    // Module to get sha3 parameters during initializtion
+    keccak_param_unit KPU (
+        .keccak_mode_i  (KPU_MODE_I),
+
+        .rate_o         (KPU_RATE_O),
+        .capacity_o     (KPU_CAPACITY_O),
+        .suffix_o       (KPU_SUFFIX_O)
     );
+    assign KPU_MODE_I = keccak_mode_i;
 
-    squeeze_unit squeeze_unit_i (
-        .state_array_i          (state_array),
-        .keccak_mode_i          (keccak_mode),
-        .rate_i                 (rate),
-        .bytes_squeezed_i       (bytes_squeezed),
+    // 2B. KECCAK STEP UNIT (KSU)
+    // ----------------------------------------------------------
+    // Keccak Step Mapping Operations Module
+    keccak_step_unit KSU (
+        .state_array_i  (KSU_STATE_ARRAY_I),
+        .round_index_i  (KSU_ROUND_INDEX_I),
+        .step_sel_i     (KSU_STEP_SEL_I),
 
-        .bytes_squeezed_o       (bytes_squeezed_o),
-        .squeeze_perm_needed_o  (squeeze_perm_needed_wire),
-        .data_o                 (t_data_o),
-        .keep_o                 (t_keep_o),
-        .last_o                 (squeeze_last_wire)
+        .state_array_o  (KSU_STATE_ARRAY_O)
     );
+    assign KSU_STATE_ARRAY_I    = state_array;
+    assign KSU_ROUND_INDEX_I    = round_idx;
+    assign KSU_STEP_SEL_I       = step_sel;
 
-    // Sequential Control FSM Updates
+    // 2C. KECCAK ABSORB UNIT (KAU)
+    // ----------------------------------------------------------
+    // Module to handle absorbing of input message
+    keccak_absorb_unit KAU (
+        .state_array_i      (KAU_STATE_ARRAY_I),
+        .rate_i             (KAU_RATE_I),
+        .bytes_absorbed_i   (KAU_BYTES_ABSORBED_I),
+        .msg_i              (KAU_MSG_I),
+        .keep_i             (KAU_KEEP_I),
+
+        .state_array_o      (KAU_STATE_ARRAY_O),
+        .bytes_absorbed_o   (KAU_BYTES_ABSORBED_O),
+        .has_carry_over_o   (KAU_HAS_CARRY_OVER_O),
+        .carry_keep_o       (KAU_CARRY_KEEP_O),
+        .carry_over_o       (KAU_CARRY_OVER_O)
+    );
+    assign KAU_STATE_ARRAY_I    = state_array;
+    assign KAU_RATE_I           = rate;
+    assign KAU_BYTES_ABSORBED_I = bytes_absorbed;
+    assign KAU_MSG_I            = has_carry_over ? { 64'b0, carry_over} : t_data_i;
+    assign KAU_KEEP_I           = has_carry_over ? {  8'b0, carry_keep} : t_keep_i;
+
+    // 2D. SUFFIX PADDER UNIT (SPU)
+    // ----------------------------------------------------------
+    suffix_padder_unit SPU (
+        .state_array_i    (SPU_STATE_ARRAY_I),
+        .rate_i           (SPU_RATE_I),
+        .bytes_absorbed_i (SPU_BYTES_ABSORBED_I),
+        .suffix_i         (SPU_SUFFIX_I),
+
+        .state_array_o    (SPU_STATE_ARRAY_O)
+    );
+    assign SPU_STATE_ARRAY_I    = state_array;
+    assign SPU_RATE_I           = rate;
+    assign SPU_BYTES_ABSORBED_I = bytes_absorbed;
+    assign SPU_SUFFIX_I         = suffix;
+
+    // 2E. SQUEEZE OUTPUT UNIT (KOU)
+    // ----------------------------------------------------------
+    keccak_output_unit KOU (
+        .state_array_i          (KOU_STATE_ARRAY_I),
+        .keccak_mode_i          (KOU_MODE_I),
+        .rate_i                 (KOU_RATE_I),
+        .bytes_squeezed_i       (KOU_BYTES_SQUEEZED_I),
+
+        .bytes_squeezed_o       (KOU_BYTES_SQUEEZED_O),
+        .squeeze_perm_needed_o  (KOU_PERM_NEEDED_O),
+        .data_o                 (KOU_DATA_O),
+        .keep_o                 (KOU_KEEP_O),
+        .last_o                 (KOU_LAST_O)
+    );
+    assign KOU_STATE_ARRAY_I    = state_array;
+    assign KOU_MODE_I           = keccak_mode;
+    assign KOU_RATE_I           = rate;
+    assign KOU_BYTES_SQUEEZED_I = bytes_squeezed;
+
+    // ==========================================================
+    // 3. SEQUENTIAL CONTROL FSM UPDATES
+    // ==========================================================
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             state               <= STATE_IDLE;
@@ -182,9 +278,9 @@ module keccak_core (
             if (init_wr_en) begin
                 // 1. Setup Parameters
                 keccak_mode     <= keccak_mode_i;
-                rate            <= rate_wire;
-                capacity        <= capacity_wire;
-                suffix          <= suffix_wire;
+                rate            <= KPU_RATE_O;
+                capacity        <= KPU_CAPACITY_O;
+                suffix          <= KPU_SUFFIX_O;
 
                 // 2. CRITICAL: Wipe the State Logic
                 state_array     <= '0;  // Must be 0 before starting new Absorb
@@ -209,13 +305,13 @@ module keccak_core (
             if (state_array_wr_en) begin
                 case (state_array_in_sel)
                     KSU_SEL : begin
-                        state_array <= ksu_out;
+                        state_array <= KSU_STATE_ARRAY_O;
                     end
                     ABSORB_SEL : begin
-                        state_array <= absorb_state_out;
+                        state_array <= KAU_STATE_ARRAY_O;
                     end
                     PADDING_SEL : begin
-                        state_array <= padding_state_out;
+                        state_array <= SPU_STATE_ARRAY_O;
                     end
                     default : begin
                         state_array <= state_array;
@@ -225,12 +321,12 @@ module keccak_core (
 
             // Absorb Stage Updating
             if (absorb_wr_en) begin
-                bytes_absorbed  <= bytes_absorbed_o;
+                bytes_absorbed  <= KAU_BYTES_ABSORBED_O;
 
-                if (has_carry_over_o) begin
+                if (KAU_HAS_CARRY_OVER_O) begin
                     has_carry_over  <= 1'b1;
-                    carry_over      <= carry_over_o;
-                    carry_keep      <= carry_keep_o;
+                    carry_over      <= KAU_CARRY_OVER_O;
+                    carry_keep      <= KAU_CARRY_KEEP_O;
                 end else begin
                     has_carry_over  <= 1'b0;
                 end
@@ -253,12 +349,14 @@ module keccak_core (
 
             // Squeeze Updating
             if (squeeze_wr_en) begin
-                bytes_squeezed <= bytes_squeezed_o;
+                bytes_squeezed <= KOU_BYTES_SQUEEZED_O;
             end
         end
     end
 
-    // Combinational Control FSM
+    // ==========================================================
+    // 4. COMBINATIONAL CONTROL FSM
+    // ==========================================================
     always_comb begin
         // Default FSM Control Signals:
         next_state          = STATE_IDLE;
@@ -393,15 +491,15 @@ module keccak_core (
                 // PRIORITY 2: Output Data
                 end else if (t_ready_i) begin
                     t_valid_o   = 1'b1;
-                    t_last_o    = squeeze_last_wire;
+                    t_last_o    = KOU_LAST_O;
 
                     // A. Check Fixed Hash Done (SHA3-*)
-                    if (squeeze_last_wire) begin
+                    if (KOU_LAST_O) begin
                         next_state = STATE_IDLE;
                         init_wr_en = 1'b1;
 
                     // B. Check Rate Empty -> Re-Permute (SHAKE)
-                    end else if (squeeze_perm_needed_wire) begin
+                    end else if (KOU_PERM_NEEDED_O) begin
                         next_state = STATE_THETA;
                         perm_en = 1'b1; // Reset counters
 

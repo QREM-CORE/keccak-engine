@@ -1,5 +1,5 @@
 /*
- * Module Name: squeeze_unit
+ * Module Name: keccak_output_unit
  * Author: Kiet Le
  * Description: Squeeze/output state array
  * NOTE: Purely combinational so far. Can be pipelined for higher clock speed if needed.
@@ -7,7 +7,7 @@
 
 import keccak_pkg::*;
 
-module squeeze_unit (
+module keccak_output_unit (
     input  logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
     input  logic [MODE_SEL_WIDTH-1:0]       keccak_mode_i,
     input  logic [RATE_WIDTH-1:0]           rate_i,

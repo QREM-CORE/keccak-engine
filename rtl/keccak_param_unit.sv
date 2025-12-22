@@ -1,7 +1,7 @@
 import keccak_pkg::*;
 
-// SHA3 Parameter Setup Module
-module sha3_setup (
+// Keccak Parameter Unit Module
+module keccak_param_unit (
     input  logic [MODE_SEL_WIDTH-1:0]   keccak_mode_i,
     output logic [RATE_WIDTH-1:0]       rate_o,
     output logic [CAPACITY_WIDTH-1:0]   capacity_o,
