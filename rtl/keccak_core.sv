@@ -269,7 +269,7 @@ module keccak_core (
             carry_keep          <= 'b0;
 
             // Squeeze Signals
-            bytes_squeezed  <= 'b0;
+            bytes_squeezed      <= 'b0;
         end else begin
             // FSM State Updating
             state <= next_state;
@@ -297,8 +297,8 @@ module keccak_core (
 
             // Reset bytes absorbed after absorb permutation
             end else if (perm_en) begin
-                bytes_absorbed <= '0;
-                bytes_squeezed <= '0;
+                bytes_absorbed  <= '0;
+                bytes_squeezed  <= '0;
             end
 
             // State Array Updating
@@ -430,10 +430,10 @@ module keccak_core (
             end
 
             STATE_SUFFIX_PADDING : begin
-                state_array_wr_en = 1'b1;
-                state_array_in_sel = PADDING_SEL;
-                next_state = STATE_THETA;
-                perm_en = 1'b1;
+                state_array_wr_en   = 1'b1;
+                state_array_in_sel  = PADDING_SEL;
+                next_state          = STATE_THETA;
+                perm_en             = 1'b1;
             end
 
             STATE_THETA : begin
