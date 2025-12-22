@@ -88,7 +88,8 @@ sudo apt-get install -y wget build-essential
 sudo apt-get install -y libc6:i386 libncurses5:i386 libstdc++6:i386 \
 lib32ncurses6 libxft2 libxft2:i386 libxext6 libxext6:i386
 ```
-Patching ModelSim (Critical for Modern Linux): If ModelSim fails to launch or hangs, apply these patches to the vco script (located in <install_dir>/modelsim_ase/vco) to fix OS detection and force 32-bit mode:
+**Patching ModelSim (Critical for Modern Linux):**
+If ModelSim fails to launch or hangs, apply these patches to the `vco` script (located in `<install_dir>/modelsim_ase/vco`) to fix OS detection and force 32-bit mode:
 ```bash
 # Fix Red Hat directory detection logic
 sudo sed -i 's/linux_rh[[:digit:]]\+/linux/g' <path_to_modelsim>/vco
@@ -99,7 +100,8 @@ sudo sed -i 's/MTI_VCO_MODE:-\"\"/MTI_VCO_MODE:-\"32\"/g' <path_to_modelsim>/vco
 ### 2. Running Simulations
 The repository includes a Makefile that handles compiling, running, and waveform generation for multiple testbenches.
 
-**Setup Environment:** Ensure the path in env.sh points to your specific ModelSim installation (e.g., /opt/intelFPGA_lite/... or /pkgcache/...).
+**Setup Environment:**
+Ensure the path in `env.sh` points to your specific ModelSim installation (e.g., `/opt/intelFPGA_lite/...` or `/pkgcache/...`).
 ```bash
 source env.sh
 ```
