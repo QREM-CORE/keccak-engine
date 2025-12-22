@@ -1,19 +1,25 @@
 /*
  * Module Name: iota_step
  * Author: Kiet Le
- * Description: - ι (iota) step mapping is responsible for introducing round-dependent
- *                constants into the state to break symmetry between rounds.
- *              - Based on FIPS202 Section 3.2.5
- *              - We only input, modify, and output the (0, 0) 64-bit lane
- * NOTE: Purely combinational so far. Can be pipelined for higher clock speed if needed.
+ * Description:
+ * - Implements the ι (Iota) step mapping, responsible for breaking symmetry
+ * between the 24 rounds of the permutation.
+ * - Adds a 64-bit Round Constant (RC) to Lane(0,0) via XOR.
+ * - Optimized Storage: Since the RC is sparse (only 7 specific bit positions
+ * can ever be '1'), this module stores only those 7 bits per round
+ * instead of full 64-bit constants, reducing area usage.
+ * - Reference: FIPS 202 Section 3.2.5
  */
+
+`default_nettype none
+`timescale 1ns / 1ps
 
 import keccak_pkg::*;
 
 module iota_step (
-    input  logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
-    input  logic [ROUND_INDEX_SIZE-1:0] round_index_i, // Current round index (0-23)
-    output logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
+    input  wire [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
+    input  wire [ROUND_INDEX_SIZE-1:0] round_index_i, // Current round index (0-23)
+    output reg  [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
 );
     /* ============================================================
      * Step 1: Get Round Constant using input Round Index
@@ -74,3 +80,5 @@ module iota_step (
     end
 
 endmodule
+
+`default_nettype wire

@@ -1,31 +1,40 @@
 /*
  * Module Name: keccak_core
  * Author: Kiet Le
- * Description: Top level module of Keccak Core
+ * Description:
+ * - Fully compliant FIPS 202 Keccak Permutation Core.
+ * - Supports SHA3-256, SHA3-512, SHAKE128, and SHAKE256 modes via 'keccak_mode_i'.
+ * - Implements standard AXI4-Stream Sink/Source interfaces for data IO.
+ * - Features a 5-stage round pipeline (Theta, Rho, Pi, Chi, Iota) for high frequency.
+ * - Handles arbitrary message lengths including correct '10*1' padding logic.
+ * - Supports infinite output generation (XOF) for SHAKE modes with external 'stop_i' control.
  */
+
+`default_nettype none
+`timescale 1ns / 1ps
 
 import keccak_pkg::*;
 
 module keccak_core (
-    input   logic                           clk,
-    input   logic                           rst,
+    input   wire                            clk,
+    input   wire                            rst,
 
-    input   logic                           start_i,
-    input   logic [MODE_SEL_WIDTH-1:0]      keccak_mode_i,
-    input   logic                           stop_i,
+    input   wire                            start_i,
+    input   wire  [MODE_SEL_WIDTH-1:0]      keccak_mode_i,
+    input   wire                            stop_i,
 
     // AXI4-Stream Signals - Sink
-    input   logic [DWIDTH-1:0]              t_data_i,
-    input   logic                           t_valid_i,
-    input   logic                           t_last_i,
-    input   logic [KEEP_WIDTH-1:0]          t_keep_i,
+    input   wire  [DWIDTH-1:0]              t_data_i,
+    input   wire                            t_valid_i,
+    input   wire                            t_last_i,
+    input   wire  [KEEP_WIDTH-1:0]          t_keep_i,
     output  logic                           t_ready_o,
     // AXI4-Stream Signals - Source
     output  logic [MAX_OUTPUT_DWIDTH-1:0]   t_data_o,
     output  logic                           t_valid_o,
     output  logic                           t_last_o,
     output  logic [KEEP_WIDTH-1:0]          t_keep_o,
-    input   logic                           t_ready_i
+    input   wire                            t_ready_i
 );
     // ==========================================================
     // 1. KECCAK LOGIC, WIRES, REGISTERS AND ENUMS
@@ -69,7 +78,6 @@ module keccak_core (
 
     // Keccak Parameter Setup Registers
     reg [RATE_WIDTH-1:0]            rate;
-    reg [CAPACITY_WIDTH-1:0]        capacity;
     reg [SUFFIX_WIDTH-1:0]          suffix;
 
     // Keccak Mode Register
@@ -112,7 +120,6 @@ module keccak_core (
     wire [MODE_SEL_WIDTH-1:0]       KPU_MODE_I;
 
     wire [RATE_WIDTH-1:0]           KPU_RATE_O;
-    wire [CAPACITY_WIDTH-1:0]       KPU_CAPACITY_O;
     wire [SUFFIX_WIDTH-1:0]         KPU_SUFFIX_O;
 
     // Keccak Step Unit (KSU) Module Wires
@@ -176,7 +183,6 @@ module keccak_core (
         .keccak_mode_i  (KPU_MODE_I),
 
         .rate_o         (KPU_RATE_O),
-        .capacity_o     (KPU_CAPACITY_O),
         .suffix_o       (KPU_SUFFIX_O)
     );
     assign KPU_MODE_I = keccak_mode_i;
@@ -279,7 +285,6 @@ module keccak_core (
                 // 1. Setup Parameters
                 keccak_mode     <= keccak_mode_i;
                 rate            <= KPU_RATE_O;
-                capacity        <= KPU_CAPACITY_O;
                 suffix          <= KPU_SUFFIX_O;
 
                 // 2. CRITICAL: Wipe the State Logic
@@ -517,4 +522,97 @@ module keccak_core (
         endcase
     end
 
+    // ==========================================================
+    // 5. ASSERTIONS (Safety & Protocol Checks)
+    // ==========================================================
+    // synthesis translate_off
+
+    // 5A. Internal Logic Safety
+    // ----------------------------------------------------------
+
+    // ASSERTION 1: Bytes Absorbed Overflow Protection
+    // Critical: If this fires, your counter logic is broken.
+    property p_bytes_absorbed_overflow;
+        @(posedge clk) disable iff (rst)
+        (bytes_absorbed <= (rate >> 3));
+    endproperty
+    assert property (p_bytes_absorbed_overflow)
+        else $error("FATAL: bytes_absorbed exceeded maximum rate!");
+
+    // ASSERTION 2: FSM State Validity
+    // Ensures the FSM never enters an unknown state (X/Z)
+    always @(posedge clk) begin
+        if (!rst && $isunknown(state))
+            $fatal("FATAL: FSM is in an unknown state!");
+    end
+
+    // ASSERTION 3: Mode Stability
+    // The Keccak mode should NOT change while the core is busy (not IDLE).
+    property p_mode_stable;
+        @(posedge clk) disable iff (rst)
+        (state != STATE_IDLE) |-> $stable(keccak_mode);
+    endproperty
+    assert property (p_mode_stable)
+        else $error("ERROR: keccak_mode changed while core was active!");
+
+    // 5B. AXI4-Stream Protocol Compliance (Sink/Input)
+    // ----------------------------------------------------------
+
+    // ASSERTION 4: AXI Valid-Ready Stability (The "Handshake Rule")
+    // Once Valid is asserted, Data/Keep/Last must NOT change until Ready goes high.
+    property p_axi_sink_stability;
+        @(posedge clk) disable iff (rst)
+        (t_valid_i && !t_ready_o) |-> ##1 (
+            $stable(t_valid_i) &&
+            $stable(t_data_i) &&
+            $stable(t_keep_i) &&
+            $stable(t_last_i)
+        );
+    endproperty
+    assert property (p_axi_sink_stability)
+        else $error("VIOLATION: AXI Sink violated Valid stability rule!");
+
+    // ASSERTION 5: No Data Loss during Backpressure (Sink)
+    // Ensure we do not enable writes/absorption if we are telling the master to wait.
+    property p_backpressure_safety;
+        @(posedge clk) disable iff (rst)
+        (!t_ready_o) |-> (!absorb_wr_en);
+    endproperty
+    assert property (p_backpressure_safety)
+        else $error("VIOLATION: Accepted data while Ready was LOW (Backpressure failure)!");
+
+    // 5C. AXI4-Stream Protocol Compliance (Source/Output)
+    // ----------------------------------------------------------
+
+    // ASSERTION 6: Source Valid-Ready Stability
+    // If we assert Valid output, we must hold it until the receiver is Ready.
+    property p_axi_source_stability;
+        @(posedge clk) disable iff (rst)
+        (t_valid_o && !t_ready_i) |-> ##1 (
+            $stable(t_valid_o) &&
+            $stable(t_data_o) &&
+            $stable(t_keep_o) &&
+            $stable(t_last_o)
+        );
+    endproperty
+    assert property (p_axi_source_stability)
+        else $error("VIOLATION: AXI Source violated Valid stability rule!");
+
+    // ----------------------------------------------------------
+    // 5D. Keccak Specific Rules
+    // ----------------------------------------------------------
+
+    // ASSERTION 7: Squeeze Counter Overflow
+    // Should never squeeze more bytes than the rate allows before re-permuting.
+    property p_squeeze_overflow;
+        @(posedge clk) disable iff (rst)
+        (bytes_squeezed <= (rate >> 3));
+    endproperty
+    assert property (p_squeeze_overflow)
+        else $error("FATAL: Squeeze counter exceeded rate!");
+
+    // synthesis translate_on
+
 endmodule
+
+`default_nettype wire

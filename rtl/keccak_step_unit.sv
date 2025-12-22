@@ -1,11 +1,29 @@
+/*
+ * Module Name: keccak_step_unit
+ * Author: Kiet Le
+ * Description:
+ * - Acts as the primary Combinational Logic block (ALU) for the Keccak Core.
+ * - Instantiates all five Keccak permutation step mappings in parallel:
+ * 1. Theta (θ): Parity computation and mixing.
+ * 2. Rho (ρ): Bitwise rotation.
+ * 3. Pi (π): Lane permutation (transpose).
+ * 4. Chi (χ): Non-linear combination (S-box equivalent).
+ * 5. Iota (ι): Round constant addition (asymmetry injection).
+ * - Uses a multiplexer ('step_sel_i') to select the result of the active step
+ * to be registered by the FSM in the next cycle.
+ */
+
+`default_nettype none
+`timescale 1ns / 1ps
+
 import keccak_pkg::*;
 
 module keccak_step_unit (
     input   logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
     // Current round index (0-23)
-    input   logic [ROUND_INDEX_SIZE-1:0]                      round_index_i,
+    input   wire  [ROUND_INDEX_SIZE-1:0]                      round_index_i,
     // Step Selector
-    input   logic [STEP_SEL_WIDTH-1:0]                        step_sel_i,
+    input   wire  [STEP_SEL_WIDTH-1:0]                        step_sel_i,
 
     output  logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
 );
@@ -38,3 +56,5 @@ module keccak_step_unit (
     end
 
 endmodule
+
+`default_nettype wire

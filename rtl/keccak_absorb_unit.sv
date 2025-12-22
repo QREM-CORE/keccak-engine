@@ -1,23 +1,31 @@
 /*
  * Module Name: keccak_absorb_unit
  * Author: Kiet Le
- * Description: Absorb 32 byte input into state array and output state array.
- *              All inputs shall have valid 32 byte input except the final transfer of full message...
- *              which can have any value equal or less than 32 bytes.
- *              Carry output always assumes 64 bits of input is valid, and the rest will be carried...
- *              over with corresponding carry keep valid flags.
- * NOTE: Purely combinational so far. Can be pipelined for higher clock speed if needed.
+ * Description:
+ * - Performs the XOR absorption phase of the Keccak sponge construction.
+ * - Accepts a variable-width message chunk (up to 256 bits) and absorbs it 
+ * into the current State Array at the offset specified by 'bytes_absorbed_i'.
+ * - Handles three data scenarios:
+ * 1. Standard Absorb: Input fits entirely within the remaining Rate block.
+ * 2. Block Full: Input fills the Rate block exactly.
+ * 3. Straddle/Carry: Input exceeds the remaining Rate block space. Logic
+ * splits the data, absorbing the lower portion and outputting the
+ * remainder as 'carry_over_o' to be fed back in the next cycle.
+ * - Supports byte-granular validity via 'keep_i' masking.
  */
+
+`default_nettype none
+`timescale 1ns / 1ps
 
 import keccak_pkg::*;
 
 // Compute state array after absorption
 module keccak_absorb_unit (
-    input   logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
-    input   logic [RATE_WIDTH-1:0]          rate_i,
-    input   logic [BYTE_ABSORB_WIDTH-1:0]   bytes_absorbed_i,
-    input   logic [DWIDTH-1:0]              msg_i,
-    input   logic [KEEP_WIDTH-1:0]          keep_i,
+    input   wire  [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
+    input   wire  [RATE_WIDTH-1:0]          rate_i,
+    input   wire  [BYTE_ABSORB_WIDTH-1:0]   bytes_absorbed_i,
+    input   wire  [DWIDTH-1:0]              msg_i,
+    input   wire  [KEEP_WIDTH-1:0]          keep_i,
 
     output  logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o,
     output  logic [BYTE_ABSORB_WIDTH-1:0]   bytes_absorbed_o,
@@ -38,7 +46,7 @@ module keccak_absorb_unit (
     localparam int MAX_POSSIBLE_LANES = 21;
 
     // ==========================================================
-    // Step 0: Mask Input Data
+    // 1. MASK INPUT DATA
     // ==========================================================
     // Zero out invalid bytes in msg_i
     logic [DWIDTH-1:0] msg_masked;
@@ -50,7 +58,7 @@ module keccak_absorb_unit (
     end
 
     // ==========================================================
-    // Step 1: Calculate Space and Valid Counts
+    // 2. CALCULATE SPACE AND VALID COUNTS
     // ==========================================================
     logic [RATE_WIDTH-1:0] rate_bytes;
     assign rate_bytes = rate_i >> 3; // Convert bits to bytes
@@ -62,7 +70,7 @@ module keccak_absorb_unit (
     assign valid_byte_count = $countones(keep_i);
 
     // ==========================================================
-    // Step 2: Process Carry (Dynamic Logic)
+    // 3. PROCESS CARRY (DYNAMIC LOGIC)
     // ==========================================================
     always_comb begin
         // Check if input data exceeds the remaining space in the rate block
@@ -89,7 +97,7 @@ module keccak_absorb_unit (
     end
 
     // ==========================================================
-    // Step 3: Split Lanes
+    // 4. SPLIT LANES
     // ==========================================================
     // Split the msg_masked into four 64-bit lanes
     wire [LANE_SIZE-1:0] split_lanes [INPUT_LANE_NUM];
@@ -101,7 +109,7 @@ module keccak_absorb_unit (
     endgenerate
 
     // ==========================================================
-    // Step 4: XOR into State (With Boundary Checks)
+    // 5. XOR INTO STATE (WITH BOUNDARY CHECKS)
     // ==========================================================
     // Find the corresponding lanes and XOR into result
     // Note: This logic assumes inputs are aligned to 64-bit boundaries relative to the full state.
@@ -143,3 +151,5 @@ module keccak_absorb_unit (
     end
 
 endmodule
+
+`default_nettype wire

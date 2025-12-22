@@ -1,23 +1,33 @@
 /*
  * Module Name: suffix_padder_unit
  * Author: Kiet Le
- * Description: XORs Suffix and Padding into State Array at once.
- * NOTE: Purely combinational so far. Can be pipelined for higher clock speed if needed.
+ * Description:
+ * - Implements the FIPS 202 '10*1' padding rule combined with the Domain Separation Suffix.
+ * - This single-cycle module applies the padding in two parts:
+ * 1. HEAD: XORs the Suffix (which includes the starting '1' pad bit) at the byte 
+ * offset immediately following the message end.
+ * 2. TAIL: XORs the final '1' bit (0x80) at the very end of the Rate block.
+ * - Supports dynamic Rates (SHA3/SHAKE) by calculating the Tail position at runtime.
+ * - Robustly handles the "Merged" edge case where the message ends in the final 
+ * byte of the block (Head == Tail), applying both XORs to the same lane correctly.
  */
+
+`default_nettype none
+`timescale 1ns / 1ps
 
 import keccak_pkg::*;
 
 module suffix_padder_unit (
     input   logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_i,
-    input   logic [RATE_WIDTH-1:0]        rate_i,
-    input   logic [BYTE_ABSORB_WIDTH-1:0] bytes_absorbed_i,
-    input   logic [SUFFIX_WIDTH-1:0]      suffix_i,       // e.g., 0x06 or 0x1F
+    input   wire  [RATE_WIDTH-1:0]        rate_i,
+    input   wire  [BYTE_ABSORB_WIDTH-1:0] bytes_absorbed_i,
+    input   wire  [SUFFIX_WIDTH-1:0]      suffix_i,       // e.g., 0x06 or 0x1F
 
     output  logic [ROW_SIZE-1:0][COL_SIZE-1:0][LANE_SIZE-1:0] state_array_o
 );
-    // =============================
-    // Step 1: Calculate Coordinates
-    // =============================
+    // ==========================================================
+    // 1. CALCULATE COORDINATES
+    // ==========================================================
 
     // HEAD: Where the message ended
     int head_lane_idx;
@@ -31,9 +41,9 @@ module suffix_padder_unit (
     int tail_lane_idx;
     assign tail_lane_idx    = int'((rate_i >> 6) - 1); // (rate_bits / 64) - 1
 
-    // ===================================
-    // Step 2: Construct the Values to XOR
-    // ===================================
+    // ==========================================================
+    // 2. CONSTRUCT THE VALUES TO XOR
+    // ==========================================================
     logic [63:0] head_pad_val;
     logic [63:0] tail_pad_val;
 
@@ -43,9 +53,9 @@ module suffix_padder_unit (
     // Tail is always 0x80 at the top byte (Little Endian)
     assign tail_pad_val = 64'h8000_0000_0000_0000;
 
-    // =========================
-    // Step 3: Apply the Padding
-    // =========================
+    // ==========================================================
+    // 3. APPLY THE PADDING
+    // ==========================================================
     always_comb begin
         // Default
         state_array_o = state_array_i;
@@ -70,3 +80,5 @@ module suffix_padder_unit (
     end
 
 endmodule
+
+`default_nettype wire
