@@ -4,11 +4,11 @@
  * Description:
  * - Implements the FIPS 202 '10*1' padding rule combined with the Domain Separation Suffix.
  * - This single-cycle module applies the padding in two parts:
- * 1. HEAD: XORs the Suffix (which includes the starting '1' pad bit) at the byte 
+ * 1. HEAD: XORs the Suffix (which includes the starting '1' pad bit) at the byte
  * offset immediately following the message end.
  * 2. TAIL: XORs the final '1' bit (0x80) at the very end of the Rate block.
  * - Supports dynamic Rates (SHA3/SHAKE) by calculating the Tail position at runtime.
- * - Robustly handles the "Merged" edge case where the message ends in the final 
+ * - Robustly handles the "Merged" edge case where the message ends in the final
  * byte of the block (Head == Tail), applying both XORs to the same lane correctly.
  */
 

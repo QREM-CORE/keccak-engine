@@ -4,7 +4,7 @@
  * Description:
  * - Implements the χ (Chi) step mapping, the only non-linear layer in Keccak.
  * - Acts effectively as a parallel S-box applied to each row independently.
- * - Logic: Each bit is XORed with the logical AND of the inverted neighbor 
+ * - Logic: Each bit is XORed with the logical AND of the inverted neighbor
  * and the neighbor's neighbor:
  * A'[x,y] = A[x,y] XOR ((NOT A[x+1,y]) AND A[x+2,y])
  * - Reference: FIPS 202 Section 3.2.4
