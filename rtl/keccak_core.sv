@@ -5,9 +5,24 @@
  * - Fully compliant FIPS 202 Keccak Permutation Core.
  * - Supports SHA3-256, SHA3-512, SHAKE128, and SHAKE256 modes via 'keccak_mode_i'.
  * - Implements standard AXI4-Stream Sink/Source interfaces for data IO.
- * - Features a 5-stage round pipeline (Theta, Rho, Pi, Chi, Iota) for high frequency.
+ * - Features a Multi-Cycle Iterative Architecture (Theta, Rho, Pi, Chi, Iota) for high frequency.
  * - Handles arbitrary message lengths including correct '10*1' padding logic.
  * - Supports infinite output generation (XOF) for SHAKE modes with external 'stop_i' control.
+ *
+ * Performance & Latency:
+ * - Architecture: Iterative decomposition (1 Keccak Round = 5 Clock Cycles).
+ * - Permutation Latency: 120 clock cycles per block (24 rounds * 5 cycles/round).
+ * - Squeeze Output: Combinational (Data is valid immediately upon entering Squeeze state).
+ *
+ * Interface Notes:
+ * - Configuration (mode/rate) is latched only on the rising edge of 'start_i'.
+ * - 't_ready_o' acts as backpressure; upstream must hold data if low.
+ *
+ * Usage Contract:
+ * - start_i must be asserted for one cycle when IDLE.
+ * - Input data must follow AXI4-Stream semantics.
+ * - stop_i is only sampled during SQUEEZE.
+ * - keccak_mode_i must remain stable after start_i.
  */
 
 `default_nettype none
@@ -36,6 +51,11 @@ module keccak_core (
     output  logic [KEEP_WIDTH-1:0]          t_keep_o,
     input   wire                            t_ready_i
 );
+    // Dataflow Summary:
+    // AXI Sink -> Absorb (KAU) -> State Array
+    // Padding (SPU) -> Permutation (KSU)
+    // State Array -> Squeeze (KOU) -> AXI Source
+
     // ==========================================================
     // 1. KECCAK LOGIC, WIRES, REGISTERS AND ENUMS
     // ==========================================================
@@ -77,7 +97,7 @@ module keccak_core (
     reg [STEP_SEL_WIDTH-1:0]        step_sel;
 
     // Keccak Parameter Setup Registers
-    reg [RATE_WIDTH-1:0]            rate;
+    reg [RATE_WIDTH-1:0]            rate; // Rate in BITS (e.g., 1088 for SHA3-256)
     reg [SUFFIX_WIDTH-1:0]          suffix;
 
     // Keccak Mode Register
@@ -86,10 +106,11 @@ module keccak_core (
     // Absorb Phase Registers
     reg                             absorb_done; // Absorb stage fully complete flag
     reg     [BYTE_ABSORB_WIDTH-1:0] bytes_absorbed; // # of bytes absorbed in the current rate block
-    reg     [DWIDTH-1:0]            carry_over;     // If rate is full, need to carry over values
+    reg     [DWIDTH-1:0]            carry_over;     // Partial AXI beat that crosses rate boundary and must be
+                                                    // re-absorbed in the next cycle
     reg                             has_carry_over; // Carry over flag
     reg     [KEEP_WIDTH-1:0]        carry_keep;
-    reg                             msg_recieved;   // Full message has been received
+    reg                             msg_received;   // Full message has been received
 
     // Squeeze Signals
     logic   [BYTE_ABSORB_WIDTH-1:0] bytes_squeezed;
@@ -105,6 +126,7 @@ module keccak_core (
 
     // Absorb Enable Wires
     logic absorb_wr_en;
+    logic msg_received_wr_en;
     logic complete_absorb_en;
 
     // Permutation Enable
@@ -169,8 +191,12 @@ module keccak_core (
     logic [RATE_WIDTH-1:0] max_bytes_absorbed;
     assign max_bytes_absorbed   = rate >> 3;
 
-    assign t_data_o             = KOU_DATA_O;
-    assign t_keep_o             = KOU_KEEP_O;
+    // Calculate Ready
+    // We are ready if we aren't full, aren't processing overflow, and aren't done.
+    logic internal_ready;
+    assign internal_ready = (bytes_absorbed != max_bytes_absorbed) &&
+                            (!has_carry_over) &&
+                            (!msg_received);
 
     // ==========================================================
     // 2. HELPER MODULE INSTANTIATIONS
@@ -258,14 +284,280 @@ module keccak_core (
     assign KOU_BYTES_SQUEEZED_I = bytes_squeezed;
 
     // ==========================================================
-    // 3. SEQUENTIAL CONTROL FSM UPDATES
+    // 3. 3-PROCESS CONTROL FSM
+    // ==========================================================
+
+    // 3A. FSM Control Process 1: State Register (Sequential)
+    // ----------------------------------------------------------
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            state <= STATE_IDLE;
+        end else begin
+            state <= next_state;
+        end
+    end
+
+    // 3B. FSM Control Process 2: Next State Decoder (Combinational)
+    // ----------------------------------------------------------
+    always_comb begin
+        next_state = state;
+
+        case(state)
+            STATE_IDLE : begin
+                if (start_i) begin
+                    next_state = STATE_ABSORB;
+                end else begin
+                    next_state = STATE_IDLE;
+                end
+            end
+
+            STATE_ABSORB : begin
+                // PRIORITY 1: If current rate block is full, run permutation
+                if (bytes_absorbed == max_bytes_absorbed) begin
+                    next_state = STATE_THETA;
+
+                // PRIORITY 2: Check if there is a unhandled carry over
+                end else if (has_carry_over) begin
+                    next_state = STATE_ABSORB;
+
+                // PRIORITY 3: Message fully received, move on to padding stage
+                end else if (msg_received) begin
+                    next_state = STATE_SUFFIX_PADDING;
+
+                // PRIORITY 4: Check if there is valid input and to process if so
+                end else if (t_valid_i && internal_ready) begin
+                    next_state = STATE_ABSORB;
+
+                // PRIORITY 5: Message not yet fully received, waiting for t_valid
+                end else begin
+                    next_state = STATE_ABSORB;
+                end
+            end
+
+            STATE_SUFFIX_PADDING : begin
+                next_state = STATE_THETA;
+            end
+
+            // ------------ PERMUTATION STEP MAPPING STATES ------------
+            STATE_THETA : begin
+                next_state = STATE_RHO;
+            end
+
+            STATE_RHO : begin
+                next_state = STATE_PI;
+            end
+
+            STATE_PI : begin
+                next_state = STATE_CHI;
+            end
+
+            STATE_CHI : begin
+                next_state = STATE_IOTA;
+            end
+
+            STATE_IOTA : begin
+                // Keccak-f[1600] requires 24 rounds (Indices 0 to 23)
+                if (round_idx == 'd23) begin
+                    if (absorb_done) begin
+                        next_state = STATE_SQUEEZE;
+                    end else begin
+                        next_state = STATE_ABSORB;
+                    end
+                end else begin
+                    next_state = STATE_THETA;
+                end
+            end
+            // ---------------------------------------------------------
+
+            STATE_SQUEEZE : begin
+                // PRIORITY 1: External Stop
+                if (stop_i) begin
+                    next_state = STATE_IDLE;
+
+                // PRIORITY 2: Output Data
+                end else if (t_ready_i) begin
+                    // A. Check Fixed Hash Done (SHA3-*)
+                    if (KOU_LAST_O) begin
+                        next_state = STATE_IDLE;
+
+                    // B. Check Rate Empty -> Re-Permute (SHAKE)
+                    end else if (KOU_PERM_NEEDED_O) begin
+                        next_state = STATE_THETA;
+
+                    // C. Continue Squeezing
+                    end else begin
+                        next_state = STATE_SQUEEZE;
+                    end
+
+                // PRIORITY 3: Receiver not ready? WAIT here.
+                end else begin
+                    next_state = STATE_SQUEEZE;
+                end
+            end
+
+            default : begin
+                next_state = STATE_IDLE;
+            end
+        endcase
+    end
+
+    // 3C. FSM Control Process 3: Action Decoder (Combinational)
+    // ----------------------------------------------------------
+    always_comb begin
+        // Defaults:
+
+        // ----- Outputs -----
+        // AXI4-Stream Signals - Sink
+        t_ready_o   = '0;
+        // AXI4-Stream Signals - Source
+        t_data_o    = '0;
+        t_valid_o   = '0;
+        t_last_o    = '0;
+        t_keep_o    = '0;
+
+        // ----- Internal Control Signals -----
+        state_array_wr_en   = 1'b0;
+        step_sel            = IDLE_STEP;
+        init_wr_en          = 1'b0;
+
+        // Absorb Wires
+        absorb_wr_en        = 1'b0;
+        msg_received_wr_en  = 1'b0;
+        complete_absorb_en  = 1'b0;
+
+        // Step Mapping
+        perm_en             = 1'b0;
+        rst_round_idx_en    = 1'b0;
+        inc_round_idx_en    = 1'b0;
+
+        // Squeeze Signals
+        squeeze_wr_en       = 1'b0;
+
+        case(state)
+            STATE_IDLE : begin
+                if (start_i) begin
+                    init_wr_en = 1'b1;
+                end
+            end
+
+            STATE_ABSORB : begin
+                t_ready_o = internal_ready;
+
+                // PRIORITY 1: If current rate block is full, run permutation
+                if (bytes_absorbed == max_bytes_absorbed) begin
+                    perm_en = 1'b1;
+
+                // PRIORITY 2: Check if there is a unhandled carry over
+                end else if (has_carry_over) begin
+                    absorb_wr_en = 1'b1;
+                    state_array_wr_en = 1'b1;
+                    state_array_in_sel = ABSORB_SEL;
+
+                // PRIORITY 3: Message fully received, move on to padding stage
+                end else if (msg_received) begin
+                    // Need this extra register for edge case:
+                    // - when message matches rate (msg_received, no carry over)
+                    complete_absorb_en = 1'b1;
+
+                // PRIORITY 4: Check if there is valid input and to process if so
+                end else if (t_valid_i && internal_ready) begin
+                    absorb_wr_en = 1'b1;
+                    state_array_wr_en = 1'b1;
+                    state_array_in_sel = ABSORB_SEL;
+                    if (t_last_i) begin
+                        msg_received_wr_en = 1'b1;
+                    end
+                end
+            end
+
+            STATE_SUFFIX_PADDING : begin
+                state_array_wr_en   = 1'b1;
+                state_array_in_sel  = PADDING_SEL;
+                perm_en             = 1'b1;
+            end
+
+            // ------------ PERMUTATION STEP MAPPING STATES ------------
+            STATE_THETA : begin
+                state_array_wr_en   = 1'b1;
+                step_sel            = THETA_STEP;
+                state_array_in_sel  = KSU_SEL;
+            end
+
+            STATE_RHO : begin
+                state_array_wr_en   = 1'b1;
+                step_sel            = RHO_STEP;
+                state_array_in_sel  = KSU_SEL;
+            end
+
+            STATE_PI : begin
+                state_array_wr_en   = 1'b1;
+                step_sel            = PI_STEP;
+                state_array_in_sel  = KSU_SEL;
+            end
+
+            STATE_CHI : begin
+                state_array_wr_en   = 1'b1;
+                step_sel            = CHI_STEP;
+                state_array_in_sel  = KSU_SEL;
+            end
+
+            STATE_IOTA : begin
+                // Keccak-f[1600] requires 24 rounds (Indices 0 to 23)
+                if (round_idx == 'd23) begin
+                    rst_round_idx_en = 1'b1;
+                end else begin
+                    inc_round_idx_en = 1'b1;
+                end
+
+                state_array_wr_en   = 1'b1;
+                step_sel            = IOTA_STEP;
+                state_array_in_sel  = KSU_SEL;
+            end
+            // ---------------------------------------------------------
+
+            STATE_SQUEEZE : begin
+                t_data_o    = KOU_DATA_O;
+                t_valid_o   = !stop_i;
+                t_last_o    = KOU_LAST_O;
+                t_keep_o    = KOU_KEEP_O;
+
+                if (stop_i) begin
+                    init_wr_en = 1'b1;
+
+                end else if (t_ready_i) begin
+                    // A. Check Fixed Hash Done (SHA3-*)
+                    if (KOU_LAST_O) begin
+                        init_wr_en = 1'b1;
+
+                    // B. Check Rate Empty -> Re-Permute (SHAKE)
+                    end else if (KOU_PERM_NEEDED_O) begin
+                        perm_en = 1'b1; // Reset counters
+
+                    // C. Continue Squeezing
+                    end else begin
+                        squeeze_wr_en = 1'b1;
+                    end
+                end
+            end
+            default : begin
+                // Defaults
+                t_ready_o   = '0;
+                t_data_o    = '0;
+                t_valid_o   = '0;
+                t_last_o    = '0;
+                t_keep_o    = '0;
+            end
+        endcase
+    end
+
+    // ==========================================================
+    // 4. KECCAK DATAPATH UPDATING
     // ==========================================================
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            state               <= STATE_IDLE;
             state_array         <= 'b0;
             round_idx           <= 'b0;
-            msg_recieved        <= 'b0;
+            msg_received        <= 'b0;
 
             // Absorb Signals
             absorb_done         <= 'b0;
@@ -277,10 +569,7 @@ module keccak_core (
             // Squeeze Signals
             bytes_squeezed      <= 'b0;
         end else begin
-            // FSM State Updating
-            state <= next_state;
-
-            // Initialization
+            // --- Initialization & Reset ---
             if (init_wr_en) begin
                 // 1. Setup Parameters
                 keccak_mode     <= keccak_mode_i;
@@ -291,7 +580,7 @@ module keccak_core (
                 state_array     <= '0;  // Must be 0 before starting new Absorb
                 bytes_absorbed  <= '0;
                 bytes_squeezed  <= '0;
-                msg_recieved    <= '0;
+                msg_received    <= '0;
 
                 // 3. Clear Internal Flags
                 absorb_done     <= '0;
@@ -306,7 +595,7 @@ module keccak_core (
                 bytes_squeezed  <= '0;
             end
 
-            // State Array Updating
+            // --- State Array Update ---
             if (state_array_wr_en) begin
                 case (state_array_in_sel)
                     KSU_SEL : begin
@@ -324,7 +613,7 @@ module keccak_core (
                 endcase
             end
 
-            // Absorb Stage Updating
+            // --- Absorb Counters & Flags ---
             if (absorb_wr_en) begin
                 bytes_absorbed  <= KAU_BYTES_ABSORBED_O;
 
@@ -341,185 +630,22 @@ module keccak_core (
                 absorb_done <= 1'b1;
             end
             // If source has completed full message transfer
-            if (t_last_i) begin
-                msg_recieved <= 1'b1;
+            if (msg_received_wr_en) begin
+                msg_received <= 1'b1;
             end
 
-            // Permutation Round Updating
+            // --- Permutation Round Control ---
             if (rst_round_idx_en) begin
                 round_idx <= 'b0;
             end else if (inc_round_idx_en) begin
                 round_idx <= round_idx + 'b1;
             end
 
-            // Squeeze Updating
+            // --- Squeeze Counters ---
             if (squeeze_wr_en) begin
                 bytes_squeezed <= KOU_BYTES_SQUEEZED_O;
             end
         end
-    end
-
-    // ==========================================================
-    // 4. COMBINATIONAL CONTROL FSM
-    // ==========================================================
-    always_comb begin
-        // Default FSM Control Signals:
-        next_state          = STATE_IDLE;
-        state_array_wr_en   = 1'b0;
-        step_sel            = IDLE_STEP;
-        init_wr_en          = 1'b0;
-
-        // Absorb Wires
-        absorb_wr_en        = 1'b0;
-        complete_absorb_en  = 1'b0;
-        perm_en             = 1'b0;
-
-        // Step Mapping
-        rst_round_idx_en    = 1'b0;
-        inc_round_idx_en    = 1'b0;
-
-        // Squeeze Signals
-        squeeze_wr_en       = 1'b0;
-
-        // Default Output Signals
-        t_ready_o           = 1'b0;
-        t_valid_o           = 1'b0;
-        t_last_o            = 1'b0;
-
-        // State Transitions
-        case(state)
-            STATE_IDLE : begin
-                if (start_i) begin
-                    next_state = STATE_ABSORB;
-                    init_wr_en = 1'b1;
-                end else begin
-                    next_state = STATE_IDLE;
-                end
-            end
-
-            STATE_ABSORB : begin
-                // Step 1: If current rate block is full, run permutation
-                if (bytes_absorbed == max_bytes_absorbed) begin
-                    next_state = STATE_THETA;
-                    perm_en = 1'b1;
-
-                // Step 2: Check if there is a unhandled carry over
-                end else if (has_carry_over) begin
-                    next_state = STATE_ABSORB;
-                    absorb_wr_en = 1'b1;
-                    state_array_wr_en = 1'b1;
-                    state_array_in_sel = ABSORB_SEL;
-
-                // Step 3: Check if there is valid input and to process if so
-                end else if (t_valid_i) begin
-                    next_state = STATE_ABSORB;
-                    absorb_wr_en = 1'b1;
-                    state_array_wr_en = 1'b1;
-                    state_array_in_sel = ABSORB_SEL;
-
-                    // Output
-                    t_ready_o = 1'b1; // ready for more data
-
-                // Message fully received, move on to padding stage
-                end else if (msg_recieved) begin
-                    next_state = STATE_SUFFIX_PADDING;
-                    complete_absorb_en = 1'b1;
-
-                // Message not yet fully received, waiting for t_valid
-                end else begin
-                    next_state = STATE_ABSORB;
-
-                    // Output
-                    t_ready_o = 1'b1; // ready for more data
-                end
-            end
-
-            STATE_SUFFIX_PADDING : begin
-                state_array_wr_en   = 1'b1;
-                state_array_in_sel  = PADDING_SEL;
-                next_state          = STATE_THETA;
-                perm_en             = 1'b1;
-            end
-
-            STATE_THETA : begin
-                next_state          = STATE_RHO;
-                state_array_wr_en   = 1'b1;
-                step_sel            = THETA_STEP;
-                state_array_in_sel  = KSU_SEL;
-            end
-
-            STATE_RHO : begin
-                next_state          = STATE_PI;
-                state_array_wr_en   = 1'b1;
-                step_sel            = RHO_STEP;
-                state_array_in_sel  = KSU_SEL;
-            end
-
-            STATE_PI : begin
-                next_state          = STATE_CHI;
-                state_array_wr_en   = 1'b1;
-                step_sel            = PI_STEP;
-                state_array_in_sel  = KSU_SEL;
-            end
-
-            STATE_CHI : begin
-                next_state          = STATE_IOTA;
-                state_array_wr_en   = 1'b1;
-                step_sel            = CHI_STEP;
-                state_array_in_sel  = KSU_SEL;
-            end
-
-            STATE_IOTA : begin
-                if (round_idx == 'd23) begin
-                    if (absorb_done) begin
-                        next_state = STATE_SQUEEZE;
-                    end else begin
-                        next_state = STATE_ABSORB;
-                    end
-                    rst_round_idx_en = 1'b1;
-                end else begin
-                    next_state = STATE_THETA;
-                    inc_round_idx_en = 1'b1;
-                end
-
-                state_array_wr_en   = 1'b1;
-                step_sel            = IOTA_STEP;
-                state_array_in_sel  = KSU_SEL;
-            end
-
-            STATE_SQUEEZE : begin
-                // PRIORITY 1: External Stop
-                if (stop_i) begin
-                    next_state = STATE_IDLE;
-                    init_wr_en = 1'b1;
-
-                // PRIORITY 2: Output Data
-                end else if (t_ready_i) begin
-                    t_valid_o   = 1'b1;
-                    t_last_o    = KOU_LAST_O;
-
-                    // A. Check Fixed Hash Done (SHA3-*)
-                    if (KOU_LAST_O) begin
-                        next_state = STATE_IDLE;
-                        init_wr_en = 1'b1;
-
-                    // B. Check Rate Empty -> Re-Permute (SHAKE)
-                    end else if (KOU_PERM_NEEDED_O) begin
-                        next_state = STATE_THETA;
-                        perm_en = 1'b1; // Reset counters
-
-                    // C. Continue Squeezing
-                    end else begin
-                        next_state = STATE_SQUEEZE;
-                        squeeze_wr_en = 1'b1;
-                    end
-                end
-            end
-
-            default : begin
-                next_state = STATE_IDLE;
-            end
-        endcase
     end
 
     // ==========================================================
