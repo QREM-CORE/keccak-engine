@@ -101,7 +101,10 @@ The design is orchestrated by a centralized FSM with the following states:
   * Terminates on:
     * Hash completion (SHA3)
     * External `stop_i` (SHAKE)
-   
+
+### Finite State Machine Diagram
+![Keccak Core FSM](docs/keccak_fsm_diagram.png)
+
 ### 📥 Absorption with Rate Boundary Carry-Over
 
 The absorb unit supports input fragments that cross rate boundaries without data loss.
