@@ -103,7 +103,7 @@ The design is orchestrated by a centralized FSM with the following states:
     * External `stop_i` (SHAKE)
 
 ### Finite State Machine Diagram
-![Keccak Core FSM](docs/keccak_fsm_diagram.jpg)
+![Keccak Core FSM](docs/KECCAK_CORE_FSM.jpg)
 
 ### 📥 Absorption with Rate Boundary Carry-Over
 
