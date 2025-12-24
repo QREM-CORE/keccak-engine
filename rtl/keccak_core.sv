@@ -490,7 +490,7 @@ module keccak_core (
 
             STATE_SQUEEZE : begin
                 t_data_o    = KOU_DATA_O;
-                t_valid_o   = 1'b1;
+                t_valid_o   = !stop_i;
                 t_last_o    = KOU_LAST_O;
                 t_keep_o    = KOU_KEEP_O;
 
