@@ -74,6 +74,9 @@ The core follows a strict **Start → Absorb → Permute → Squeeze** lifecycle
 
 ## 🛠️ Architecture Overview
 
+### Finite State Machine Diagram
+![Keccak Core FSM](docs/KECCAK_CORE_FSM.jpg)
+
 The design is orchestrated by a centralized FSM with the following states:
 
 * **IDLE**
@@ -101,7 +104,7 @@ The design is orchestrated by a centralized FSM with the following states:
   * Terminates on:
     * Hash completion (SHA3)
     * External `stop_i` (SHAKE)
-   
+
 ### 📥 Absorption with Rate Boundary Carry-Over
 
 The absorb unit supports input fragments that cross rate boundaries without data loss.
