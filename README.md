@@ -31,16 +31,98 @@ This core utilizes a **Multi-Cycle Iterative Architecture**. To maximize operati
 | **SHAKE128** | 128-bit | 1344 bits | 256 bits | `1111` |
 | **SHAKE256** | 256-bit | 1088 bits | 512 bits | `1111` |
 
-## 🛠️ Architecture
+## 🔄 Control Protocol
+
+The core follows a strict **Start → Absorb → Permute → Squeeze** lifecycle.
+
+1. **Initialization**
+   * Assert `start_i` for one cycle while in `STATE_IDLE`
+   * Internally:
+     * Mode, rate, and suffix are latched
+     * State array is wiped to zero
+     * Absorb/squeeze counters are reset
+
+2. **Absorption Phase**
+   * Input data is streamed via AXI4-Stream sink
+   * Backpressure is applied when permutations are running
+   * `t_last_i` marks the final message fragment
+   * Arbitrary message lengths are supported via `t_keep_i`
+
+3. **Padding & Final Permutation**
+   * FIPS 202 domain suffix and `10*1` padding are injected automatically
+   * A final 24-round permutation is executed
+
+4. **Squeeze Phase**
+   * Output is streamed via AXI4-Stream source
+   * For SHA3 modes, output terminates automatically
+   * For SHAKE modes, output continues indefinitely until `stop_i` is asserted
+
+⚠️ **Important:** `keccak_mode_i` must remain stable after `start_i` until the core returns to `STATE_IDLE`.
+
+## 🔌 AXI4-Stream Behavior Notes
+
+### Sink Interface (Input)
+* `t_ready_o` is deasserted while permutations are running
+* Data is only accepted when `t_valid_i && t_ready_o`
+* Input signals must remain stable while `t_ready_o` is low
+
+### Source Interface (Output)
+* `t_valid_o` is asserted only when downstream is ready
+* Output data, keep, and last remain stable under backpressure
+* SHAKE modes may produce unlimited output blocks
 
 
+## 🛠️ Architecture Overview
 
-The core is controlled by a central FSM utilizing a Sponge Construction:
+The design is orchestrated by a centralized FSM with the following states:
 
-1.  **Absorber Unit:** Buffers 256-bit AXI data chunks. It handles "carry-over" logic for when input data boundaries do not align with the internal block rate.
-2.  **Step Unit (ALU):** The critical path is broken down into 5 sequential steps per round. A full permutation requires 24 rounds $\times$ 5 steps = **120 clock cycles**.
-3.  **Suffix Padder:** A dedicated unit that injects the Domain Separation Suffix (e.g., `0x06` or `0x1F`) and the final `1` bit at the end of the message.
-4.  **Output Unit:** Linearizes the 3D ($5 \times 5 \times 64$) state array into 256-bit output words and manages "Squeezing" for XOF modes.
+* **IDLE**
+  * Waits for `start_i`
+  * Core is quiescent; AXI interfaces inactive
+
+* **ABSORB**
+  * Accepts AXI4-Stream input data
+  * Handles partial words using `t_keep`
+  * Supports carry-over when rate boundaries are crossed
+  * Automatically schedules permutations when the rate is full
+
+* **SUFFIX_PADDING**
+  * Injects FIPS 202 domain separation suffix
+  * Appends final `1` bit according to `10*1` padding rule
+
+* **PERMUTATION PIPELINE**
+  * Each Keccak round is decomposed into 5 FSM states:
+    * `THETA → RHO → PI → CHI → IOTA`
+  * A full permutation requires **24 rounds × 5 cycles = 120 cycles**
+
+* **SQUEEZE**
+  * Streams output blocks via AXI4-Stream
+  * Automatically re-enters permutation when rate is exhausted
+  * Terminates on:
+    * Hash completion (SHA3)
+    * External `stop_i` (SHAKE)
+   
+### 📥 Absorption with Rate Boundary Carry-Over
+
+The absorb unit supports input fragments that cross rate boundaries without data loss.
+
+* Partial input words are tracked using `t_keep`
+* Excess bytes are buffered internally (`carry_over`)
+* Carry-over data is automatically re-injected on the next absorb cycle
+* No external re-alignment or padding is required from the user
+
+This allows seamless hashing of arbitrarily-sized messages using wide AXI data paths.
+
+## ⏱️ Performance Characteristics
+
+* **Permutation latency:** 120 cycles per Keccak-f[1600]
+* **Absorb throughput:** 256 bits per accepted AXI beat
+* **Squeeze throughput:** 256 bits per cycle (subject to backpressure)
+* **Critical path:** Single Keccak step (Θ, ρ, π, χ, or ι)
+
+The multi-cycle round decomposition significantly reduces combinational depth,
+enabling higher achievable clock frequencies compared to single-cycle designs.
+
 
 ## 🔌 Signal Description
 
