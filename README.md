@@ -74,8 +74,18 @@ The core follows a strict **Start → Absorb → Permute → Squeeze** lifecycle
 
 ## 🛠️ Architecture Overview
 
-### Finite State Machine Diagram
-![Keccak Core FSM](docs/KECCAK_CORE_FSM.jpg)
+### Structural Data Path
+![Keccak Core Structural Diagram](docs/KECCAK_STRUCTURAL_DIAGRAM.jpg)
+
+The architecture centers around a **1600-bit (200-byte) State Array** that circulates through four specialized processing units in a feedback loop:
+
+* **Keccak Absorb Unit (KAU):** Manages the "Sponge" construction by XORing incoming AXI data streams into the state array. It handles partial-block buffering and rate-boundary crossings.
+* **Suffix Padder Unit (SPU):** Injects the domain separation bits (e.g., `0x06` for SHA3) and the FIPS 202 `10*1` padding rule once the message is complete.
+* **Keccak Step Unit (KSU):** The computational heart of the core. It executes the 24 rounds of permutations ($\theta, \rho, \pi, \chi, \iota$).
+* **Keccak Output Unit (KOU):** Truncates the state array to the desired rate (r) and linearizes the data onto the AXI4-Stream output bus during the Squeeze phase.
+
+### Finite State Machine (Control)
+![Keccak Core FSM Diagram](docs/KECCAK_CORE_FSM.jpg)
 
 The design is orchestrated by a centralized FSM with the following states:
 
