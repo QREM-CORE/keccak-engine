@@ -115,7 +115,7 @@ The design is orchestrated by a centralized FSM with the following states:
     * Hash completion (SHA3)
     * External `stop_i` (SHAKE)
 
-### 📥 Absorption with Rate Boundary Carry-Over
+### Absorption with Rate Boundary Carry-Over
 
 The absorb unit supports input fragments that cross rate boundaries without data loss.
 
