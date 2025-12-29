@@ -12,7 +12,7 @@ This core utilizes a **Multi-Cycle Iterative Architecture**. To maximize operati
 
 ## 🚀 Key Features
 
-* **FIPS 202 Compliant:** Byte-exact implementation of SHA-3 and SHAKE standards.
+* **FIPS 202 Compliant:** Byte-exact implementation of SHA-3 and SHAKE standards. Verified against **3,592 NIST Test Vectors**.
 * **Runtime Configurable:** Switch between 4 modes dynamically via input signals:
     * **Fixed-Length:** SHA3-256, SHA3-512
     * **Extendable-Output (XOF):** SHAKE128, SHAKE256
@@ -167,8 +167,21 @@ enabling higher achievable clock frequencies compared to single-cycle designs.
 
 This project utilizes a dual-verification strategy: **SystemVerilog Assertions (SVA)** for runtime protocol checking and **Python-generated NIST vectors** for standard compliance. Continuous Integration (CI) is handled via GitHub Actions to ensure build integrity on every Pull Request.
 
+### 🛡️ NIST FIPS 202 Compliance
+
+This core has been verified against the official **NIST Cryptographic Algorithm Validation Program (CAVP)** test vectors. A dedicated "Heavy" testbench (`keccak_core_heavy_tb.sv`) handles the automated regression of over 3,500 test vectors using a Two-Pass Python Runner to optimize disk usage.
+
+#### Verification Results
+| Standard | File Type | Count | Status |
+| :--- | :--- | :--- | :--- |
+| **SHA3** | `ShortMsg`, `LongMsg` | 100% | ✅ PASS |
+| **SHAKE** | `ShortMsg`, `LongMsg`, `VariableOut` | 100% | ✅ PASS |
+| **Total** | **All Vectors** | **3,592** | **PASS** |
+
 ### 1. Prerequisites (Linux/Ubuntu)
 The simulation environment relies on **ModelSim (Intel FPGA Lite)**. Since ModelSim ASE is a 32-bit application, running it on modern 64-bit Linux distributions (like Ubuntu 20.04/22.04) requires specific 32-bit compatibility libraries and a kernel check patch.
+
+---
 
 **Install Dependencies:**
 ```bash
@@ -195,6 +208,8 @@ sudo sed -i 's/MTI_VCO_MODE:-\"\"/MTI_VCO_MODE:-\"32\"/g' <path_to_modelsim>/vco
 ### 2. Running Simulations
 The repository includes a Makefile that handles compiling, running, and waveform generation for multiple testbenches.
 
+---
+
 **Setup Environment:**
 Ensure the path in `env.sh` points to your specific ModelSim installation (e.g., `/opt/intelFPGA_lite/...` or `/pkgcache/...`).
 ```bash
@@ -218,27 +233,108 @@ make clean
 ```
 **Viewing Waveforms:** Every simulation run automatically generates a corresponding Value Change Dump (.vcd) file (e.g., keccak_core_tb.vcd) which can be opened in GTKWave or ModelSim.
 
+### 3. Running the Compliance Suite
+
+This section describes how to execute the full **NIST FIPS 202 compliance regression**, consisting of vector generation followed by a two-pass simulation run.
+
+---
+
+#### Step 1: Generate NIST Test Vectors
+
+Convert the official NIST `.rsp` files into a single consolidated `vectors.txt` file consumed by the heavy testbench.
+
+```bash
+cd verif/
+
+# Parse ALL vectors (≈ 4,000 total; full compliance run)
+python parse_nist_vectors.py --full test_vectors/SHA3/*.rsp test_vectors/SHAKE/*.rsp
+
+# OR parse a reduced subset (default: 10 per file) for quick sanity checks
+# python parse_nist_vectors.py test_vectors/SHA3/*.rsp test_vectors/SHAKE/*.rsp
+
+cd ..
+```
+
+#### Step 2: Run Compliance Regression
+Invoke the heavy regression runner:
+```bash
+python tb/run_heavy.py
+```
+The regression executes in **two passes**:
+
+- **Fast Pass**
+  Runs all test vectors with waveform generation disabled for maximum throughput.
+
+- **Debug Pass (On Failure Only)**
+  Automatically re-runs the failing test ID with VCD recording enabled and archives the waveform for inspection.
+
+
+#### Outputs & Artifacts
+
+- **Logs**
+  Full simulation output is written to `regression.log`.
+
+- **Failure Artifacts**
+  Waveform dumps (`.vcd`) for failing vectors are stored in `failures/`.
+
+
 ## 📂 File Structure
 
 The repository is organized into RTL source, testbenches, and verification scripts:
 
 ```text
 .
-├── rtl/                        # SystemVerilog Source Code
-│   ├── keccak_core.sv          # Top Level Module
-│   ├── keccak_step_unit.sv     # Permutation Round Logic (ALU)
-│   ├── keccak_absorb_unit.sv   # Input Buffering & XOR Logic
-│   ├── keccak_output_unit.sv   # Output Linearization & Squeeze
-│   ├── keccak_param_unit.sv    # Parameter LUT (Rate/Suffix)
-│   ├── suffix_padder_unit.sv   # FIPS 202 Padding Logic
-│   └── ...                     # Individual Step Modules (Chi, Theta, etc.)
-├── tb/                         # SystemVerilog Testbenches
-│   ├── keccak_core_tb.sv       # Main Integration Testbench
-│   ├── keccak_core_heavy_tb.sv # Long-running Stress Tests
-│   └── ...                     # Unit Testbenches for sub-modules
-├── verif/                      # Compliance Verification
-│   ├── parse_nist_vectors.py   # Script to parse official NIST .rsp files
-│   └── test_vectors/           # Official NIST SHA3/SHAKE Test Vectors
-├── python_testing/             # Golden Model Generators
-│   └── ...                     # Python reference implementations for step logic
-└── Makefile                    # Build and Simulation scripts
+├── docs/                        # Architecture Diagrams
+│   ├── KECCAK_CORE_FSM.jpg
+│   └── KECCAK_STRUCTURAL_DIAGRAM.jpg
+├── python_testing/              # Step-mapping Golden Models (Python)
+│   ├── chi_step.py
+│   ├── iota_step.py
+│   ├── pi_step.py
+│   ├── rho_step.py
+│   └── theta_step.py
+├── rtl/                         # SystemVerilog Source Code
+│   ├── chi_step.sv
+│   ├── iota_step.sv
+│   ├── keccak_absorb_unit.sv
+│   ├── keccak_core.sv           # Top-level Module
+│   ├── keccak_output_unit.sv
+│   ├── keccak_param_unit.sv
+│   ├── keccak_pkg.sv            # Global Parameters & Enums
+│   ├── keccak_step_unit.sv
+│   ├── merge_sv.py              # Script to bundle RTL for synthesis
+│   ├── pi_step.sv
+│   ├── rho_step.sv
+│   ├── suffix_padder_unit.sv
+│   └── theta_step.sv
+├── tb/                          # SystemVerilog Testbenches
+│   ├── chi_step_tb.sv
+│   ├── iota_step_tb.sv
+│   ├── keccak_absorb_unit_tb.sv
+│   ├── keccak_core_heavy_tb.sv  # Compliance regression TB
+│   ├── keccak_core_tb.sv        # Integration TB
+│   ├── keccak_output_unit_tb.sv
+│   ├── pi_step_tb.sv
+│   ├── rho_step_tb.sv
+│   ├── run_heavy.py             # Python automation runner
+│   ├── suffix_padder_unit_tb.sv
+│   └── theta_step_tb.sv
+├── verif/                       # NIST Compliance Suite
+│   ├── parse_nist_vectors.py    # .rsp to vectors.txt parser
+│   └── test_vectors/            # Official NIST CAVP Files
+│       ├── SHA3/
+│       │   ├── SHA3_256LongMsg.rsp
+│       │   ├── SHA3_256ShortMsg.rsp
+│       │   ├── SHA3_512LongMsg.rsp
+│       │   └── SHA3_512ShortMsg.rsp
+│       └── SHAKE/
+│           ├── SHAKE128LongMsg.rsp
+│           ├── SHAKE128ShortMsg.rsp
+│           ├── SHAKE128VariableOut.rsp
+│           ├── SHAKE256LongMsg.rsp
+│           ├── SHAKE256ShortMsg.rsp
+│           └── SHAKE256VariableOut.rsp
+├── env.sh                       # Environment setup script
+├── LICENSE                      # MIT License
+├── Makefile                     # Simulation & build automation
+└── README.md
