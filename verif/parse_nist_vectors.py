@@ -16,16 +16,16 @@ def get_mode_from_filename(filename):
     elif "SHA3-512" in base or "SHA3_512" in base:
         return "SHA3_512", 512
     elif "SHAKE128" in base:
-        return "SHAKE128", None 
+        return "SHAKE128", None
     elif "SHAKE256" in base:
-        return "SHAKE256", None 
+        return "SHAKE256", None
     else:
         return None, None
 
 def parse_rsp_file(filepath, output_file, limit=None):
     filename = os.path.basename(filepath)
     print(f"Processing {filename}...", end=" ")
-    
+
     mode, default_out_len = get_mode_from_filename(filepath)
     if not mode:
         print(f"\n  [WARN] Could not determine Keccak Mode. Skipping.")
@@ -39,10 +39,12 @@ def parse_rsp_file(filepath, output_file, limit=None):
     re_outlen_line = re.compile(r"^Outputlen\s*=\s*(\d+)")
 
     # State variables
-    current_len = 0
+    # Initialize current_len to None so we don't accidentally treat
+    # VariableOut files (which lack Len= lines) as length 0.
+    current_len = None
     current_msg = ""
     current_out_len = default_out_len
-    
+
     count_extracted = 0
     count_total = 0
 
@@ -58,7 +60,7 @@ def parse_rsp_file(filepath, output_file, limit=None):
                 current_out_len = int(m_header.group(1))
                 continue
 
-            # 2. Check for Per-Test Output Length
+            # 2. Check for Per-Test Output Length (Common in VariableOut)
             m_outlen = re_outlen_line.search(line)
             if m_outlen:
                 current_out_len = int(m_outlen.group(1))
@@ -74,8 +76,11 @@ def parse_rsp_file(filepath, output_file, limit=None):
             m_msg = re_msg.search(line)
             if m_msg:
                 current_msg = m_msg.group(1)
-                if current_len == 0:
-                    current_msg = "EMPTY" 
+
+                # Only force "EMPTY" if we explicitly saw a Len=0 line.
+                # In VariableOut files, current_len remains None, so we keep the hex.
+                if current_len is not None and current_len == 0:
+                    current_msg = "EMPTY"
                 continue
 
             # 5. Check for Output Hash (Trigger to write)
@@ -86,17 +91,18 @@ def parse_rsp_file(filepath, output_file, limit=None):
 
                 # STOP if we hit the limit
                 if limit is not None and count_extracted >= limit:
-                    continue 
-                
-                # Fix length if missing
+                    continue
+
+                # Fix length if missing (calculate from hex digest)
                 if current_out_len is None:
-                    current_out_len = len(digest) * 4 
+                    current_out_len = len(digest) * 4
 
                 # Write to output
                 output_file.write(f"{mode} {current_out_len} {current_msg} {digest}\n")
                 count_extracted += 1
-                
+
                 # Reset for next block
+                # If this is a VariableOut file, reset length to None so we pick up the next specific length
                 if default_out_len is None and "VariableOut" in filepath:
                      current_out_len = None
                 elif default_out_len is not None:
@@ -110,14 +116,14 @@ def parse_rsp_file(filepath, output_file, limit=None):
 
 def main():
     parser = argparse.ArgumentParser(description="Parse NIST Keccak .rsp files for SystemVerilog TB.")
-    
+
     # Allow passing multiple files (e.g. *.rsp)
     parser.add_argument('files', metavar='FILE', type=str, nargs='+',
                         help='The .rsp files to parse')
-    
+
     parser.add_argument('-o', '--output', type=str, default='vectors.txt',
                         help='Output filename (default: vectors.txt)')
-    
+
     parser.add_argument('--full', action='store_true',
                         help=f'Parse ALL vectors. If not set, limits to {DEFAULT_LIMIT} per file.')
 
@@ -129,11 +135,11 @@ def main():
     print(f"Writing to {args.output}...")
     if limit:
         print(f"Limiting to {limit} vectors per file (use --full to process all).")
-    
+
     with open(args.output, 'w') as out_f:
         for f_path in args.files:
             parse_rsp_file(f_path, out_f, limit)
-            
+
     print("Done.")
 
 if __name__ == "__main__":

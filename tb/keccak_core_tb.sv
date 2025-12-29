@@ -14,24 +14,26 @@ module keccak_core_tb;
     // =====================================================================
     localparam CLK_PERIOD = 10;
 
-    // Derived from your Package
-    // DWIDTH is 256 bits (32 Bytes)
+    // Watchdog timeout to prevent infinite loops from consuming storage
+    localparam time TIMEOUT_LIMIT = 500_000;
+
+    // Derived from Package
     localparam int BYTES_PER_BEAT = DWIDTH / 8;
 
     logic clk;
     logic rst;
 
     // DUT Control
-    logic                      start_i;
-    keccak_mode                keccak_mode_i; // Use Enum from Pkg
-    logic                      stop_i;
+    logic                           start_i;
+    keccak_mode                     keccak_mode_i;
+    logic                           stop_i;
 
     // AXI4-Stream Sink (Input to Core)
-    logic [DWIDTH-1:0]         t_data_i;
-    logic                      t_valid_i;
-    logic                      t_last_i;
-    logic [KEEP_WIDTH-1:0]     t_keep_i;
-    logic                      t_ready_o;
+    logic [DWIDTH-1:0]              t_data_i;
+    logic                           t_valid_i;
+    logic                           t_last_i;
+    logic [KEEP_WIDTH-1:0]          t_keep_i;
+    logic                           t_ready_o;
 
     // AXI4-Stream Source (Output from Core)
     logic [MAX_OUTPUT_DWIDTH-1:0]   t_data_o;
@@ -58,7 +60,7 @@ module keccak_core_tb;
         .clk            (clk),
         .rst            (rst),
         .start_i        (start_i),
-        .keccak_mode_i  (keccak_mode_i), // Passes Enum directly
+        .keccak_mode_i  (keccak_mode_i),
         .stop_i         (stop_i),
 
         // Sink
@@ -137,8 +139,7 @@ module keccak_core_tb;
 
         // Handle empty message case (Len=0)
         if (total_bytes == 0) begin
-            // Depending on protocol, might need to send one transaction with keep=0 and last=1
-            // Or just rely on padding in core. Assuming standard AXI behavior:
+            // Depending on protocol, send one transaction with keep=0 and last=1
             @(posedge clk);
             while (!t_ready_o) @(posedge clk);
             t_valid_i <= 1;
@@ -154,16 +155,11 @@ module keccak_core_tb;
         // Loop until all bytes sent
         while (sent_bytes < total_bytes) begin
 
-            // 1. Wait for the clock edge
+            // Wait for clock edge to sample signals
             @(posedge clk);
 
-            // 2. NOW check signals.
-            // If valid is low (we are starting) OR ready is high (RTL accepted prev data)
-            // Note: Since we are at the edge, we sample the pre-update value of ready
+            // Flow Control: Drive if valid is low (idle) or ready is high (accepted)
             if (!t_valid_i || t_ready_o) begin
-
-                // Drive the NEW data using Non-Blocking Assignments (<=).
-                // Updates happen at the end of the time step (clean waveform).
                 t_valid_i <= 1;
                 t_data_i  <= '0;
                 t_keep_i  <= '0;
@@ -186,8 +182,6 @@ module keccak_core_tb;
                 end
 
             end
-            // If ready was low (Busy), we do nothing.
-            // The loop repeats, waits for next @(posedge clk), and checks ready again.
         end
 
         // Cleanup
@@ -196,99 +190,168 @@ module keccak_core_tb;
         t_valid_i <= 0;
         t_last_i  <= 0;
         t_keep_i  <= 0;
+
+        // Verify t_ready_o behavior post-transaction
+        #(1);
+        if (t_ready_o === 1'bx) begin
+             $error("[FAIL] t_ready_o is X (unknown) after driving message!");
+        end
     endtask
 
     // =====================================================================
-    // 6. Monitor Task: Check Response
+    // 6. Monitor Task: Check Response & Verify Signals
     // =====================================================================
     /**
      * Reconstructs the hash from the AXI4-Stream Source interface,
-     * compares it against the NIST expected vector, and logs the result.
+     * compares it against the NIST expected vector, logs the result,
+     * AND verifies that output control signals (keep, last) are correct.
      */
     task automatic check_response(
-        input string      test_name,       // Description for the log
-        input string      exp_hex,         // NIST expected MD (hex string)
-        input int         out_bits,        // Number of bits to collect
-        input keccak_mode mode             // Current mode (SHA3 vs SHAKE)
+        input string      test_name,
+        input string      exp_hex,
+        input int         out_bits,
+        input keccak_mode mode
     );
-        logic [7:0] collected_bytes[$];    // Queue to store byte-by-byte result
+        logic [7:0] collected_bytes[$];
         logic [MAX_OUTPUT_DWIDTH-1:0] current_word;
         logic [MAX_OUTPUT_DWIDTH/8-1:0] current_keep;
-        int bytes_needed;
+
+        int bytes_total_expected;
+        int bytes_collected_so_far = 0;
+
+        // Rate Tracking Variables
+        int rate_bytes;
+        int bytes_squeezed_from_dut_total = 0; // Tracks TOTAL bytes DUT has sent
+        int bytes_in_current_rate_block;
+        int bytes_remaining_in_rate_block;
+
         int i;
-        string res_str = "";               // Reconstructed result string
+        string res_str = "";
         bit is_shake;
 
-        // Determine if we are in XOF (Extendable Output) mode
+        // Signal verification
+        logic [MAX_OUTPUT_DWIDTH/8-1:0] exp_keep;
+        logic                           exp_last;
+
         is_shake = (mode == SHAKE128 || mode == SHAKE256);
-        bytes_needed = out_bits / 8;
+        bytes_total_expected = out_bits / 8;
 
-        // Signal to the DUT that the TB is ready to accept data
+        // 1. Determine Rate based on Mode
+        case (mode)
+            SHA3_256: rate_bytes = 136; // 1088 bits
+            SHA3_512: rate_bytes = 72;  // 576 bits
+            SHAKE128: rate_bytes = 168; // 1344 bits
+            SHAKE256: rate_bytes = 136; // 1088 bits
+            default:  rate_bytes = 136;
+        endcase
+
         t_ready_i = 1;
+        $display("[%s] Monitor: Waiting for %0d bytes...", test_name, bytes_total_expected);
 
-        $display("[%s] Monitor: Waiting for %0d bytes of output...", test_name, bytes_needed);
-
-        // --- Data Collection Loop ---
         forever begin
             @(posedge clk);
 
-            // Handshake check (Valid from DUT, Ready from TB)
             if (t_valid_o && t_ready_i) begin
-                current_word = t_data_o;
-                current_keep = t_keep_o;
 
-                // Extract only the bytes marked as valid by t_keep
-                // FIPS 202: The first byte of the hash is at t_data_o[7:0]
-                for (i = 0; i < (MAX_OUTPUT_DWIDTH/8); i++) begin
-                    if (current_keep[i]) begin
-                        collected_bytes.push_back(current_word[i*8 +: 8]);
+                // --- 1. CALCULATE EXPECTED SIGNALS ---
+
+                // A. Determine where we are inside the Keccak "Rate Block"
+                // The DUT output pattern depends on the Rate, not on how many bytes the test requested.
+                bytes_in_current_rate_block = bytes_squeezed_from_dut_total % rate_bytes;
+                bytes_remaining_in_rate_block = rate_bytes - bytes_in_current_rate_block;
+
+                // B. Calculate Expected Keep for THIS beat
+                exp_keep = '0;
+
+                // If the DUT has >= 32 bytes left in its current permuted block, it gives a full beat.
+                // If it has < 32 bytes left, it gives a partial beat (the boundary).
+                if (bytes_remaining_in_rate_block >= (MAX_OUTPUT_DWIDTH/8)) begin
+                    exp_keep = '1; // Full Keep (FFFF)
+                end else begin
+                    // Partial Keep (e.g., if 8 bytes left, keep is 000000FF)
+                    for (int b=0; b < bytes_remaining_in_rate_block; b++) exp_keep[b] = 1'b1;
+                end
+
+                // Exception: For SHA3 (Fixed), the very last beat of the *message* might be partial
+                // even if the Rate block isn't empty.
+                if (!is_shake) begin
+                    int bytes_remaining_total = bytes_total_expected - bytes_collected_so_far;
+                     if (bytes_remaining_total < (MAX_OUTPUT_DWIDTH/8)) begin
+                        // Overwrite exp_keep for the final SHA3 beat
+                        exp_keep = '0;
+                        for (int b=0; b < bytes_remaining_total; b++) exp_keep[b] = 1'b1;
                     end
                 end
 
-                // --- Termination Logic ---
-
-                // For SHAKE: The core will squeeze forever until we tell it to stop.
-                // We stop once we've collected the specific amount requested by the test.
-                if (is_shake && collected_bytes.size() >= bytes_needed) begin
-                    stop_i = 1;      // Pulse stop to reset the FSM
-                    @(posedge clk);
-                    stop_i = 0;
-                    break;
+                // C. Verify Keep
+                if (t_keep_o !== exp_keep) begin
+                    $error("[%s] SIGNAL ERROR: t_keep_o mismatch at DUT byte offset %0d",
+                           test_name, bytes_squeezed_from_dut_total);
+                    $display("\tExpected Keep: %b", exp_keep);
+                    $display("\tGot Keep:      %b", t_keep_o);
                 end
 
-                // For SHA3: The core has a fixed length and will assert t_last
-                // once the final chunk of the digest is driven.
-                if (!is_shake && t_last_o) begin
+                // D. Verify Last (Strict for SHA3, loose for SHAKE)
+                if (!is_shake) begin
+                    // SHA3 logic (Last asserts at end of hash)
+                    int bytes_rem = bytes_total_expected - bytes_collected_so_far;
+                    if (bytes_rem <= (MAX_OUTPUT_DWIDTH/8)) exp_last = 1; else exp_last = 0;
+                    if (t_last_o !== exp_last) $error("[%s] SIGNAL ERROR: t_last_o mismatch!", test_name);
+                end else begin
+                    // SHAKE logic (Last usually 0, dependent on implementation)
+                    if (t_last_o !== 0) $error("[%s] SIGNAL ERROR: SHAKE t_last_o should be 0!", test_name);
+                end
+
+                // --- 2. DATA COLLECTION ---
+                current_word = t_data_o;
+                current_keep = t_keep_o;
+
+                for (i = 0; i < (MAX_OUTPUT_DWIDTH/8); i++) begin
+                    if (current_keep[i]) begin
+                        // Increment the DUT tracker (valid byte received from hardware)
+                        bytes_squeezed_from_dut_total++;
+
+                        // Only store if the test case actually requires more data
+                        if (collected_bytes.size() < bytes_total_expected) begin
+                            collected_bytes.push_back(current_word[i*8 +: 8]);
+                            bytes_collected_so_far++;
+                        end
+                    end
+                end
+
+                // --- 3. TERMINATION ---
+                if (collected_bytes.size() >= bytes_total_expected) begin
+                    if (is_shake) begin
+                        stop_i = 1;
+                        @(posedge clk);
+                        stop_i = 0;
+                    end
                     break;
                 end
             end
         end
 
-        // De-assert ready after loop completion
         t_ready_i = 0;
 
         // --- Result Reconstruction ---
-        // Converts the queue of bytes into a single hex string for comparison.
-        for (i = 0; i < bytes_needed; i++) begin
+        for (i = 0; i < bytes_total_expected; i++) begin
             if (i < collected_bytes.size())
                 res_str = {res_str, $sformatf("%02x", collected_bytes[i])};
             else
-                res_str = {res_str, "XX"}; // Marker for underflow (missing data)
+                res_str = {res_str, "XX"};
         end
 
-        // --- Logging & Comparison ---
         if (res_str.tolower() == exp_hex.tolower()) begin
             $display("    [PASS] %s", test_name);
-            $display("    MD: %s", res_str.tolower());
         end else begin
-            $error("    [FAIL] %s", test_name);
+            $error("    [FAIL] %s Data Mismatch", test_name);
             $display("    Expected: %s", exp_hex.tolower());
             $display("    Got:      %s", res_str.tolower());
         end
     endtask
 
     // =====================================================================
-    // 7. Main Test Execution
+    // 7. Main Test Execution (With Watchdog Timer)
     // =====================================================================
     task automatic run_test(test_vector_t tv);
         $display("----------------------------------------------------------");
@@ -296,22 +359,36 @@ module keccak_core_tb;
 
         reset_dut();
 
-        fork
+        // Use fork/join_any to implement a watchdog timer
+        fork : test_watchdog_guard
+            // Thread 1: The Test Logic
             begin
-                // Stimulus Thread
+                // Setup signals before forking the driver/monitor
                 @(posedge clk);
                 start_i = 1;
                 keccak_mode_i = tv.mode;
                 @(posedge clk);
                 start_i = 0;
 
-                drive_msg(tv.msg_hex_str);
+                // Run driver and monitor in parallel
+                fork
+                    drive_msg(tv.msg_hex_str);
+                    check_response(tv.name, tv.exp_md_hex_str, tv.output_len_bits, tv.mode);
+                join
+
+                $display("    [INFO] Test execution finished normally.");
             end
+
+            // Thread 2: The Timeout Watchdog
             begin
-                // Monitor Thread
-                check_response(tv.name, tv.exp_md_hex_str, tv.output_len_bits, tv.mode);
+                #(TIMEOUT_LIMIT);
+                $error("[FATAL] TIMEOUT detected for test: %s", tv.name);
+                $error("       Simulation forced to stop this test case to save storage.");
             end
-        join
+        join_any
+
+        // Disable pending threads (either the timer or the stuck test logic)
+        disable fork;
 
         #(CLK_PERIOD * 5);
     endtask
@@ -371,7 +448,8 @@ module keccak_core_tb;
         // =====================================================================
 
         // Empty Message
-        tv.name = "SHAKE128 Empty"; tv.mode = SHAKE128; tv.msg_hex_str = "";
+        tv.name = "SHAKE128 Empty"; tv.mode = SHAKE128;
+        tv.msg_hex_str = "";
         tv.exp_md_hex_str = "7f9c2ba4e88f827d616045507605853e";
         tv.output_len_bits = 128; vectors.push_back(tv);
 
