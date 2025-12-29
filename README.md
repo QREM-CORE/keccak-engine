@@ -284,57 +284,25 @@ The repository is organized into RTL source, testbenches, and verification scrip
 
 ```text
 .
-├── docs/                        # Architecture Diagrams
-│   ├── KECCAK_CORE_FSM.jpg
-│   └── KECCAK_STRUCTURAL_DIAGRAM.jpg
+├── docs/                        # Architecture Diagrams & FSM Specs
 ├── python_testing/              # Step-mapping Golden Models (Python)
-│   ├── chi_step.py
-│   ├── iota_step.py
-│   ├── pi_step.py
-│   ├── rho_step.py
-│   └── theta_step.py
 ├── rtl/                         # SystemVerilog Source Code
-│   ├── chi_step.sv
-│   ├── iota_step.sv
-│   ├── keccak_absorb_unit.sv
 │   ├── keccak_core.sv           # Top-level Module
-│   ├── keccak_output_unit.sv
-│   ├── keccak_param_unit.sv
 │   ├── keccak_pkg.sv            # Global Parameters & Enums
-│   ├── keccak_step_unit.sv
+│   ├── keccak_step_unit.sv      # Permutation Round Logic
+│   ├── keccak_absorb_unit.sv    # Input Buffering & XOR Logic
+│   ├── keccak_output_unit.sv    # Output Linearization & Squeeze
+│   ├── suffix_padder_unit.sv    # FIPS 202 Padding Logic
 │   ├── merge_sv.py              # Script to bundle RTL for synthesis
-│   ├── pi_step.sv
-│   ├── rho_step.sv
-│   ├── suffix_padder_unit.sv
-│   └── theta_step.sv
+│   └── *_step.sv                # Individual Step Modules (Chi, Rho, etc.)
 ├── tb/                          # SystemVerilog Testbenches
-│   ├── chi_step_tb.sv
-│   ├── iota_step_tb.sv
-│   ├── keccak_absorb_unit_tb.sv
-│   ├── keccak_core_heavy_tb.sv  # Compliance regression TB
-│   ├── keccak_core_tb.sv        # Integration TB
-│   ├── keccak_output_unit_tb.sv
-│   ├── pi_step_tb.sv
-│   ├── rho_step_tb.sv
-│   ├── run_heavy.py             # Python automation runner
-│   ├── suffix_padder_unit_tb.sv
-│   └── theta_step_tb.sv
+│   ├── keccak_core_tb.sv        # Integration Testbench
+│   ├── keccak_core_heavy_tb.sv  # NIST Compliance Regression
+│   ├── run_heavy.py             # Python Automation Runner
+│   └── *_step_tb.sv             # Unit Testbenches for Sub-modules
 ├── verif/                       # NIST Compliance Suite
 │   ├── parse_nist_vectors.py    # .rsp to vectors.txt parser
-│   └── test_vectors/            # Official NIST CAVP Files
-│       ├── SHA3/
-│       │   ├── SHA3_256LongMsg.rsp
-│       │   ├── SHA3_256ShortMsg.rsp
-│       │   ├── SHA3_512LongMsg.rsp
-│       │   └── SHA3_512ShortMsg.rsp
-│       └── SHAKE/
-│           ├── SHAKE128LongMsg.rsp
-│           ├── SHAKE128ShortMsg.rsp
-│           ├── SHAKE128VariableOut.rsp
-│           ├── SHAKE256LongMsg.rsp
-│           ├── SHAKE256ShortMsg.rsp
-│           └── SHAKE256VariableOut.rsp
-├── env.sh                       # Environment setup script
-├── LICENSE                      # MIT License
-├── Makefile                     # Simulation & build automation
+│   └── test_vectors/            # Official NIST CAVP Test Vectors
+├── Makefile                     # Simulation & Build automation
 └── README.md
+```
