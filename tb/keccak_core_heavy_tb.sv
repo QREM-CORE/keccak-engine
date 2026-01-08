@@ -26,7 +26,6 @@ module keccak_core_heavy_tb;
     localparam CLK_PERIOD = 10;
 
     // Safety Timeout: 500us is sufficient for standard test vectors.
-    // Prevents infinite loops from consuming disk space with VCD data.
     localparam time TIMEOUT_LIMIT = 500_000;
 
     // Derived from Package
@@ -36,32 +35,30 @@ module keccak_core_heavy_tb;
     logic rst;
 
     // DUT Control
-    logic                           start_i;
-    keccak_mode                     keccak_mode_i;
-    logic                           stop_i;
+    logic                               start_i;
+    keccak_mode                         keccak_mode_i;
+    logic                               stop_i;
 
-    // AXI4-Stream Sink (Input to Core)
-    logic [DWIDTH-1:0]              t_data_i;
-    logic                           t_valid_i;
-    logic                           t_last_i;
-    logic [KEEP_WIDTH-1:0]          t_keep_i;
-    logic                           t_ready_o;
+    // ---------------------------------------------------------------------
+    // AXI4-Stream Interfaces
+    // ---------------------------------------------------------------------
+    // Instantiate the interface bundles.
+    // NOTE: We use DWIDTH from keccak_pkg.
+    
+    // Sink Interface (Input to Core)
+    axis_if #(.DWIDTH(DWIDTH)) s_axis();
 
-    // AXI4-Stream Source (Output from Core)
-    logic [MAX_OUTPUT_DWIDTH-1:0]   t_data_o;
-    logic                           t_valid_o;
-    logic                           t_last_o;
-    logic [MAX_OUTPUT_DWIDTH/8-1:0] t_keep_o;
-    logic                           t_ready_i;
+    // Source Interface (Output from Core)
+    axis_if #(.DWIDTH(DWIDTH)) m_axis();
 
     // Test Vector Definition
     typedef struct {
-        int         id;
-        string      name;
+        int        id;
+        string     name;
         keccak_mode mode;
-        string      msg_hex_str;
-        string      exp_md_hex_str;
-        int         output_len_bits;
+        string     msg_hex_str;
+        string     exp_md_hex_str;
+        int        output_len_bits;
     } test_vector_t;
 
     test_vector_t vectors[$];
@@ -76,19 +73,11 @@ module keccak_core_heavy_tb;
         .keccak_mode_i  (keccak_mode_i),
         .stop_i         (stop_i),
 
-        // Sink
-        .t_data_i       (t_data_i),
-        .t_valid_i      (t_valid_i),
-        .t_last_i       (t_last_i),
-        .t_keep_i       (t_keep_i),
-        .t_ready_o      (t_ready_o),
+        // Connect Sink Interface using the 'sink' modport
+        .s_axis         (s_axis.sink),
 
-        // Source
-        .t_data_o       (t_data_o),
-        .t_valid_o      (t_valid_o),
-        .t_last_o       (t_last_o),
-        .t_keep_o       (t_keep_o),
-        .t_ready_i      (t_ready_i)
+        // Connect Source Interface using the 'source' modport
+        .m_axis         (m_axis.source)
     );
 
     // =====================================================================
@@ -103,11 +92,16 @@ module keccak_core_heavy_tb;
         rst = 1;
         start_i = 0;
         stop_i = 0;
-        t_valid_i = 0;
-        t_last_i = 0;
-        t_keep_i = 0;
-        t_data_i = 0;
-        t_ready_i = 0;
+        
+        // Reset Sink Interface Signals
+        s_axis.tvalid = 0;
+        s_axis.tlast  = 0;
+        s_axis.tkeep  = 0;
+        s_axis.tdata  = 0;
+
+        // Reset Source Interface Backpressure
+        m_axis.tready = 0;
+
         @(posedge clk);
         @(posedge clk);
         rst = 0;
@@ -163,7 +157,6 @@ module keccak_core_heavy_tb;
             if (line.len() < 5 || line.substr(0,1) == "//") continue;
 
             // Parse Format: MODE LENGTH MSG DIGEST
-            // Note: $sscanf handles whitespace delimiting.
             if ($sscanf(line, "%s %s %s", raw_mode, raw_len, raw_msg) == 3) begin
 
                 // 1. Mode Parsing
@@ -181,7 +174,6 @@ module keccak_core_heavy_tb;
                 else tv.msg_hex_str = raw_msg;
 
                 // 4. Digest Parsing
-                // Use *s skip specifiers to read the 4th token (Digest)
                 void'($sscanf(line, "%*s %*s %*s %s", raw_digest));
                 tv.exp_md_hex_str = raw_digest;
 
@@ -213,14 +205,14 @@ module keccak_core_heavy_tb;
         // Handle empty message case (Len=0)
         if (total_bytes == 0) begin
             @(posedge clk);
-            while (!t_ready_o) @(posedge clk);
-            t_valid_i <= 1;
-            t_last_i  <= 1;
-            t_keep_i  <= '0;
-            t_data_i  <= '0;
+            while (!s_axis.tready) @(posedge clk);
+            s_axis.tvalid <= 1;
+            s_axis.tlast  <= 1;
+            s_axis.tkeep  <= '0;
+            s_axis.tdata  <= '0;
             @(posedge clk);
-            t_valid_i <= 0;
-            t_last_i  <= 0;
+            s_axis.tvalid <= 0;
+            s_axis.tlast  <= 0;
             return;
         end
 
@@ -231,17 +223,17 @@ module keccak_core_heavy_tb;
             @(posedge clk);
 
             // Flow Control: Drive if valid is low (idle) or ready is high (accepted)
-            if (!t_valid_i || t_ready_o) begin
-                t_valid_i <= 1;
-                t_data_i  <= '0;
-                t_keep_i  <= '0;
-                t_last_i  <= 0;
+            if (!s_axis.tvalid || s_axis.tready) begin
+                s_axis.tvalid <= 1;
+                s_axis.tdata  <= '0;
+                s_axis.tkeep  <= '0;
+                s_axis.tlast  <= 0;
 
-                // Pack up to 32 bytes (BYTES_PER_BEAT) into t_data_i
+                // Pack up to 32 bytes (BYTES_PER_BEAT) into tdata
                 for (k = 0; k < BYTES_PER_BEAT; k++) begin
                     if ((sent_bytes + k) < total_bytes) begin
-                        t_data_i[k*8 +: 8] <= msg_bytes[sent_bytes + k];
-                        t_keep_i[k]        <= 1'b1;
+                        s_axis.tdata[k*8 +: 8] <= msg_bytes[sent_bytes + k];
+                        s_axis.tkeep[k]        <= 1'b1;
                     end
                 end
 
@@ -249,7 +241,7 @@ module keccak_core_heavy_tb;
 
                 // Assert T_LAST if this is the final chunk
                 if (sent_bytes >= total_bytes) begin
-                    t_last_i <= 1'b1;
+                    s_axis.tlast <= 1'b1;
                 end
 
             end
@@ -257,15 +249,15 @@ module keccak_core_heavy_tb;
 
         // Cleanup
         @(posedge clk);
-        while (!t_ready_o) @(posedge clk); // Wait for final handshake if pending
-        t_valid_i <= 0;
-        t_last_i  <= 0;
-        t_keep_i  <= 0;
+        while (!s_axis.tready) @(posedge clk); // Wait for final handshake if pending
+        s_axis.tvalid <= 0;
+        s_axis.tlast  <= 0;
+        s_axis.tkeep  <= 0;
 
-        // Verify t_ready_o behavior post-transaction
+        // Verify tready behavior post-transaction
         #(1);
-        if (t_ready_o === 1'bx) begin
-             $error("[FAIL] t_ready_o is X (unknown) after driving message!");
+        if (s_axis.tready === 1'bx) begin
+             $error("[FAIL] s_axis.tready is X (unknown) after driving message!");
         end
     endtask
 
@@ -279,8 +271,8 @@ module keccak_core_heavy_tb;
         input keccak_mode mode
     );
         logic [7:0] collected_bytes[$];
-        logic [MAX_OUTPUT_DWIDTH-1:0] current_word;
-        logic [MAX_OUTPUT_DWIDTH/8-1:0] current_keep;
+        logic [DWIDTH-1:0] current_word;
+        logic [DWIDTH/8-1:0] current_keep;
 
         int bytes_total_expected;
         int bytes_collected_so_far = 0;
@@ -296,7 +288,7 @@ module keccak_core_heavy_tb;
         bit is_shake;
 
         // Signal verification
-        logic [MAX_OUTPUT_DWIDTH/8-1:0] exp_keep;
+        logic [DWIDTH/8-1:0]            exp_keep;
         logic                           exp_last;
 
         // Logging helpers
@@ -321,12 +313,12 @@ module keccak_core_heavy_tb;
             default:  rate_bytes = 136;
         endcase
 
-        t_ready_i = 1;
+        m_axis.tready = 1;
 
         forever begin
             @(posedge clk);
 
-            if (t_valid_o && t_ready_i) begin
+            if (m_axis.tvalid && m_axis.tready) begin
 
                 // --- 1. SIGNAL VERIFICATION ---
 
@@ -340,7 +332,7 @@ module keccak_core_heavy_tb;
 
                 // If DUT has >= 32 bytes left in current block, expect full beat.
                 // Otherwise, expect partial beat at block boundary.
-                if (bytes_remaining_in_rate_block >= (MAX_OUTPUT_DWIDTH/8)) begin
+                if (bytes_remaining_in_rate_block >= (DWIDTH/8)) begin
                     exp_keep = '1;
                 end else begin
                     for (int b=0; b < bytes_remaining_in_rate_block; b++) exp_keep[b] = 1'b1;
@@ -349,7 +341,7 @@ module keccak_core_heavy_tb;
                 // Exception: For SHA3 (Fixed), the very last beat of message might be partial
                 if (!is_shake) begin
                     int bytes_remaining_total = bytes_total_expected - bytes_collected_so_far;
-                     if (bytes_remaining_total < (MAX_OUTPUT_DWIDTH/8)) begin
+                     if (bytes_remaining_total < (DWIDTH/8)) begin
                         // Overwrite exp_keep for the final SHA3 beat
                         exp_keep = '0;
                         for (int b=0; b < bytes_remaining_total; b++) exp_keep[b] = 1'b1;
@@ -357,29 +349,29 @@ module keccak_core_heavy_tb;
                 end
 
                 // C. Verify Keep
-                if (t_keep_o !== exp_keep) begin
-                    $error("[%s] SIGNAL ERROR: t_keep_o mismatch at DUT byte offset %0d",
+                if (m_axis.tkeep !== exp_keep) begin
+                    $error("[%s] SIGNAL ERROR: tkeep mismatch at DUT byte offset %0d",
                            test_name, bytes_squeezed_from_dut_total);
                     $display("\tExpected Keep: %b", exp_keep);
-                    $display("\tGot Keep:      %b", t_keep_o);
+                    $display("\tGot Keep:      %b", m_axis.tkeep);
                 end
 
                 // D. Verify Last
                 if (!is_shake) begin
                     // SHA3: Last asserts at end of hash
                     int bytes_rem = bytes_total_expected - bytes_collected_so_far;
-                    if (bytes_rem <= (MAX_OUTPUT_DWIDTH/8)) exp_last = 1; else exp_last = 0;
-                    if (t_last_o !== exp_last) $error("[%s] SIGNAL ERROR: t_last_o mismatch!", test_name);
+                    if (bytes_rem <= (DWIDTH/8)) exp_last = 1; else exp_last = 0;
+                    if (m_axis.tlast !== exp_last) $error("[%s] SIGNAL ERROR: tlast mismatch!", test_name);
                 end else begin
                     // SHAKE: Last should be 0 (controlled by stop_i)
-                    if (t_last_o !== 0) $error("[%s] SIGNAL ERROR: SHAKE t_last_o should be 0!", test_name);
+                    if (m_axis.tlast !== 0) $error("[%s] SIGNAL ERROR: SHAKE tlast should be 0!", test_name);
                 end
 
                 // --- 2. DATA COLLECTION ---
-                current_word = t_data_o;
-                current_keep = t_keep_o;
+                current_word = m_axis.tdata;
+                current_keep = m_axis.tkeep;
 
-                for (i = 0; i < (MAX_OUTPUT_DWIDTH/8); i++) begin
+                for (i = 0; i < (DWIDTH/8); i++) begin
                     if (current_keep[i]) begin
                         bytes_squeezed_from_dut_total++;
 
@@ -403,7 +395,7 @@ module keccak_core_heavy_tb;
             end
         end
 
-        t_ready_i = 0;
+        m_axis.tready = 0;
 
         // --- Result Reconstruction ---
         for (i = 0; i < bytes_total_expected; i++) begin

@@ -1,12 +1,20 @@
 # =====================
-# ModelSim Multi-TB Makefile (Updated for new file structure)
+# ModelSim Multi-TB Makefile
 # =====================
 
 # List of testbenches (example: TESTBENCHES = theta_step_tb rho_step_tb)
 TESTBENCHES = theta_step_tb rho_step_tb pi_step_tb chi_step_tb iota_step_tb keccak_absorb_unit_tb suffix_padder_unit_tb keccak_output_unit_tb keccak_core_tb
 
-# RTL design and package files
-PKG_SRCS = rtl/keccak_pkg.sv
+# --- PATH DEFINITIONS ---
+LIB_DIR     = lib/common_rtl
+# Assuming the submodule has its own 'rtl' folder inside
+LIB_SRCS    = $(wildcard $(LIB_DIR)/rtl/*.sv)
+
+# --- SOURCE FILES ---
+# Packages must be compiled first
+PKG_SRCS    = rtl/keccak_pkg.sv
+
+# Your local design files
 DESIGN_SRCS = $(wildcard rtl/*.sv)
 COMMON_SRCS = $(wildcard rtl/*.svh)
 
@@ -17,8 +25,8 @@ WORK = work
 all: $(WORK)
 	@if [ -z "$(strip $(TESTBENCHES))" ]; then \
 		echo "No testbenches specified. Compiling RTL only..."; \
-		vlog -work $(WORK) -sv $(PKG_SRCS); \
-		vlog -work $(WORK) -sv $(filter-out $(PKG_SRCS), $(DESIGN_SRCS)) $(COMMON_SRCS); \
+		vlog -work $(WORK) -sv +incdir+$(LIB_DIR)/rtl $(PKG_SRCS) $(LIB_SRCS); \
+		vlog -work $(WORK) -sv +incdir+$(LIB_DIR)/rtl $(filter-out $(PKG_SRCS), $(DESIGN_SRCS)) $(COMMON_SRCS); \
 	else \
 		$(MAKE) run_all TESTBENCHES="$(TESTBENCHES)"; \
 	fi
@@ -40,15 +48,18 @@ run_all:
 run_%: $(WORK)
 	@if [ "$*" = "all" ]; then exit 0; fi
 	@echo "=== Running $* ==="
-	vlog -work $(WORK) -sv $(PKG_SRCS)
-	vlog -work $(WORK) -sv $(filter-out $(PKG_SRCS), $(DESIGN_SRCS)) $(COMMON_SRCS) tb/$*.sv
+# 1. Compile Packages & Common Lib (Interfaces)
+	vlog -work $(WORK) -sv +incdir+$(LIB_DIR)/rtl $(PKG_SRCS) $(LIB_SRCS)
+# 2. Compile Design & Testbench
+	vlog -work $(WORK) -sv +incdir+$(LIB_DIR)/rtl $(filter-out $(PKG_SRCS), $(DESIGN_SRCS)) $(COMMON_SRCS) tb/$*.sv
+
+# 3. Create Macro & Run
 	@echo 'vcd file "$*.vcd"' > run_$*.macro
 	@echo 'vcd add -r /$*/*' >> run_$*.macro
 	@echo 'run -all' >> run_$*.macro
 	@echo 'quit' >> run_$*.macro
 	vsim -c -do run_$*.macro $(WORK).$*
-	rm -f run_$*.macro
-
+	@rm -f run_$*.macro
 # Add the new TB to the list
 TESTBENCHES += keccak_core_heavy_tb
 
@@ -56,8 +67,8 @@ TESTBENCHES += keccak_core_heavy_tb
 # We override the standard run_% rule for this specific target to avoid huge VCDs
 run_keccak_core_heavy_tb: $(WORK)
 	@echo "=== Running Heavy Regression (No VCD) ==="
-	vlog -work $(WORK) -sv $(PKG_SRCS)
-	vlog -work $(WORK) -sv $(filter-out $(PKG_SRCS), $(DESIGN_SRCS)) $(COMMON_SRCS) tb/keccak_core_heavy_tb.sv
+	vlog -work $(WORK) -sv +incdir+$(LIB_DIR)/rtl $(PKG_SRCS)
+	vlog -work $(WORK) -sv +incdir+$(LIB_DIR)/rtl $(filter-out $(PKG_SRCS), $(DESIGN_SRCS)) $(COMMON_SRCS) tb/keccak_core_heavy_tb.sv
 	@echo 'run -all' > run_heavy.macro
 	@echo 'quit' >> run_heavy.macro
 	vsim -c -do run_heavy.macro $(WORK).keccak_core_heavy_tb

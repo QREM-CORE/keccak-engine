@@ -1,0 +1,3 @@
+[submodule "lib/common_rtl"]
+	path = lib/common_rtl
+	url = git@github.com:QREM-CORE/common-rtl.git

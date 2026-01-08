@@ -22,8 +22,8 @@ module keccak_output_unit_tb ();
 
     logic [BYTE_ABSORB_WIDTH-1:0]   bytes_squeezed_o;
     logic                           squeeze_perm_needed_o;
-    logic [MAX_OUTPUT_DWIDTH-1:0]   data_o;
-    logic [MAX_OUTPUT_DWIDTH/8-1:0] keep_o;
+    logic [DWIDTH-1:0]              data_o;
+    logic [DWIDTH/8-1:0]            keep_o;
     logic                           last_o;
 
     // Instance
@@ -84,8 +84,8 @@ module keccak_output_unit_tb ();
     // ==========================================================
     task automatic check_results(
         input string test_name,
-        input logic [MAX_OUTPUT_DWIDTH-1:0]   exp_data,
-        input logic [MAX_OUTPUT_DWIDTH/8-1:0] exp_keep,
+        input logic [DWIDTH-1:0]              exp_data,
+        input logic [DWIDTH/8-1:0]            exp_keep,
         input logic                           exp_last,
         input logic                           exp_perm_needed
     );
@@ -153,7 +153,7 @@ module keccak_output_unit_tb ();
     // ==========================================================
     // Main Test Procedure
     // ==========================================================
-    logic [MAX_OUTPUT_DWIDTH-1:0] exp_data_build;
+    logic [DWIDTH-1:0] exp_data_build;
     int i;
 
     initial begin

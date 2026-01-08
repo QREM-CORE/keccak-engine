@@ -140,8 +140,7 @@ enabling higher achievable clock frequencies compared to single-cycle designs.
 ## 🔌 Signal Description
 
 ### Parameters
-* `DWIDTH`: Input Data Width (Default: **256 bits**)
-* `MAX_OUTPUT_DWIDTH`: Output Data Width (Default: **256 bits**)
+* `DWIDTH`: Input/Output Data Width (Default: **256 bits**)
 
 ### Ports
 
@@ -293,7 +292,7 @@ The repository is organized into RTL source, testbenches, and verification scrip
 │   ├── keccak_absorb_unit.sv    # Input Buffering & XOR Logic
 │   ├── keccak_output_unit.sv    # Output Linearization & Squeeze
 │   ├── suffix_padder_unit.sv    # FIPS 202 Padding Logic
-│   ├── merge_sv.py              # Script to bundle RTL for synthesis
+│   ├── merge_sv.py              # Script to bundle RTL for Prompting
 │   └── *_step.sv                # Individual Step Modules (Chi, Rho, etc.)
 ├── tb/                          # SystemVerilog Testbenches
 │   ├── keccak_core_tb.sv        # Integration Testbench
