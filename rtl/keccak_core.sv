@@ -38,23 +38,48 @@ module keccak_core (
     input   wire  [MODE_SEL_WIDTH-1:0]      keccak_mode_i,
     input   wire                            stop_i,
 
-    // AXI4-Stream Signals - Sink
-    input   wire  [DWIDTH-1:0]              t_data_i,
-    input   wire                            t_valid_i,
-    input   wire                            t_last_i,
-    input   wire  [KEEP_WIDTH-1:0]          t_keep_i,
-    output  logic                           t_ready_o,
-    // AXI4-Stream Signals - Source
-    output  logic [MAX_OUTPUT_DWIDTH-1:0]   t_data_o,
-    output  logic                           t_valid_o,
-    output  logic                           t_last_o,
-    output  logic [KEEP_WIDTH-1:0]          t_keep_o,
-    input   wire                            t_ready_i
+    // AXI4-Stream Interface - Sink (Input)
+    axis_if.sink                            s_axis,
+
+    // AXI4-Stream Interface - Source (Output)
+    axis_if.source                          m_axis
 );
     // Dataflow Summary:
     // AXI Sink -> Absorb (KAU) -> State Array
     // Padding (SPU) -> Permutation (KSU)
     // State Array -> Squeeze (KOU) -> AXI Source
+
+    // ==========================================================
+    // 0. INTERFACE BRIDGE / ADAPTER
+    // ==========================================================
+
+    // Sink Internal Signals
+    logic [DWIDTH-1:0]      t_data_i;
+    logic                   t_valid_i;
+    logic                   t_last_i;
+    logic [KEEP_WIDTH-1:0]  t_keep_i;
+    logic                   t_ready_o;
+
+    // Source Internal Signals
+    logic [DWIDTH-1:0]      t_data_o;
+    logic                   t_valid_o;
+    logic                   t_last_o;
+    logic [KEEP_WIDTH-1:0]  t_keep_o;
+    logic                   t_ready_i;
+
+    // Assignments: Sink (Input from Interface -> Internal)
+    assign t_data_i       = s_axis.tdata;
+    assign t_valid_i      = s_axis.tvalid;
+    assign t_last_i       = s_axis.tlast;
+    assign t_keep_i       = s_axis.tkeep;
+    assign s_axis.tready  = t_ready_o; // Output to Interface
+
+    // Assignments: Source (Internal -> Output to Interface)
+    assign m_axis.tdata   = t_data_o;
+    assign m_axis.tvalid  = t_valid_o;
+    assign m_axis.tlast   = t_last_o;
+    assign m_axis.tkeep   = t_keep_o;
+    assign t_ready_i      = m_axis.tready; // Input from Interface
 
     // ==========================================================
     // 1. KECCAK LOGIC, WIRES, REGISTERS AND ENUMS

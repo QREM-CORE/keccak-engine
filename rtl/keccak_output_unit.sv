@@ -3,7 +3,7 @@
  * Author: Kiet Le
  * Description:
  * - Implements the "Squeeze" phase of the sponge construction.
- * - Extracts data from the State Array in chunks of 'MAX_OUTPUT_DWIDTH' (e.g., 256 bits).
+ * - Extracts data from the State Array in chunks of 'DWIDTH' (e.g., 256 bits).
  * - Linearizes the 3D State Array (Lane[x][y]) into a bitstream for output.
  * - Manages Flow Control:
  * 1. Fixed-Length (SHA3-256/512): Asserts 'last_o' when the digest size is reached.
@@ -25,8 +25,8 @@ module keccak_output_unit (
 
     output logic [BYTE_ABSORB_WIDTH-1:0]    bytes_squeezed_o,      // Next counter value
     output logic                            squeeze_perm_needed_o, // Flag: Rate is empty!
-    output logic [MAX_OUTPUT_DWIDTH-1:0]    data_o,                // 256 Bits
-    output logic [MAX_OUTPUT_DWIDTH/8-1:0]  keep_o,                // Valid bytes
+    output logic [DWIDTH-1:0]               data_o,                // 256 Bits
+    output logic [DWIDTH/8-1:0]             keep_o,                // Valid bytes
     output logic                            last_o                 // End of Hash
 );
     // ==========================================================
@@ -34,7 +34,7 @@ module keccak_output_unit (
     // ==========================================================
     // Simply increment by the bus width (32 bytes).
     // The FSM is responsible for resetting this to 0 when permutation happens.
-    assign bytes_squeezed_o = bytes_squeezed_i + (MAX_OUTPUT_DWIDTH / 8);
+    assign bytes_squeezed_o = bytes_squeezed_i + (DWIDTH / 8);
 
     // ==========================================================
     // 2. FLATTEN THE 2D STATE ARRAY INTO 1D
@@ -57,10 +57,10 @@ module keccak_output_unit (
     assign start_bit_idx = bytes_squeezed_i * 8;
 
     // Extract the data window
-    // assign data_o = state_linear[start_bit_idx +: MAX_OUTPUT_DWIDTH];
+    // assign data_o = state_linear[start_bit_idx +: DWIDTH];
     always_comb begin
         data_o = 'b0;
-        data_o = state_linear[start_bit_idx +: MAX_OUTPUT_DWIDTH];
+        data_o = state_linear[start_bit_idx +: DWIDTH];
     end
 
     // ==========================================================
@@ -72,7 +72,7 @@ module keccak_output_unit (
 
     always_comb begin
         // If we have more than 32 bytes left in the rate, keep all 32.
-        if (bytes_remaining_in_rate >= (MAX_OUTPUT_DWIDTH/8)) begin
+        if (bytes_remaining_in_rate >= (DWIDTH/8)) begin
             keep_o = '1; // All ones
         end else begin
             // We hit the end of the rate block. Mask the valid bytes.
@@ -85,7 +85,7 @@ module keccak_output_unit (
     // 5. SHAKE PERMUTATION TRIGGER
     // ==========================================================
     // If the remaining bytes <= what we are about to output, we are draining the block.
-    assign squeeze_perm_needed_o = (bytes_remaining_in_rate <= (MAX_OUTPUT_DWIDTH/8));
+    assign squeeze_perm_needed_o = (bytes_remaining_in_rate <= (DWIDTH/8));
 
     // ==========================================================
     // 6. LAST SIGNAL LOGIC
