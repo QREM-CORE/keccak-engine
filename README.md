@@ -294,7 +294,6 @@ The repository is organized into RTL source, testbenches, and verification scrip
 ├── lib/
 │   └── common_rtl/              # Shared Git Submodule (AXI Interfaces)
 │       └── rtl/axis_if.sv
-├── python_testing/              # Step-mapping Golden Models (Python)
 ├── rtl/                         # SystemVerilog Source Code
 │   ├── keccak_core.sv           # Top-level Module
 │   ├── keccak_pkg.sv            # Global Parameters & Enums
@@ -307,7 +306,8 @@ The repository is organized into RTL source, testbenches, and verification scrip
 │   ├── keccak_core_tb.sv        # Integration Testbench
 │   ├── keccak_core_heavy_tb.sv  # NIST Compliance Regression
 │   └── *_step_tb.sv             # Unit Testbenches for Sub-modules
-├── verif/                       # NIST Compliance Suite
+├── verif/                       # NIST Compliance Suite & Python Testing
+|   ├── python_testing/          # Step-mapping Golden Models (Python)
 │   ├── parse_nist_vectors.py    # .rsp to vectors.txt parser
 │   └── test_vectors/            # Official NIST CAVP Test Vectors
 ├── Makefile                     # Simulation & Build automation
