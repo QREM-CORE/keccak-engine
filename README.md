@@ -22,6 +22,16 @@ This core utilizes a **Multi-Cycle Iterative Architecture**. To maximize operati
     * **Safety Features:** Integrated **SystemVerilog Assertions (SVA)** verify state machine stability, counter overflows, and AXI protocol compliance in real-time.
 * **Production Ready:** Written with `default_nettype none` to prevent implicit wire hazards and supports explicit width casting.
 
+## 📦 Installation & Cloning
+
+Because this repository uses shared RTL libraries, you must clone recursively:
+
+```bash
+git clone --recursive git@github.com:QREM-CORE/keccak-core.git
+# OR if you already cloned it:
+git submodule update --init --recursive
+```
+
 ## 📊 Supported Modes
 
 | Mode | Security Strength | Rate (r) | Capacity (c) | Suffix |
@@ -71,6 +81,11 @@ The core follows a strict **Start → Absorb → Permute → Squeeze** lifecycle
 * Output data, keep, and last remain stable under backpressure
 * SHAKE modes may produce unlimited output blocks
 
+## ⚠️ Integration Notes
+
+* **Latency & Backpressure:** The core deasserts `s_axis.tready` for 120 cycles during the permutation phase. Upstream buffers (FIFOs) must be sized to handle this pause if streaming continuously.
+* **SHAKE Infinite Stream:** In XOF modes (SHAKE128/256), the `m_axis` output stream is **infinite**. You *must* assert `stop_i` or drop `m_axis.tready` to halt data generation.
+* **Partial Bytes:** `s_axis.tkeep` is fully respected, allowing messages that are not 256-bit aligned.
 
 ## 🛠️ Architecture Overview
 
@@ -144,23 +159,27 @@ enabling higher achievable clock frequencies compared to single-cycle designs.
 
 ### Ports
 
-| Signal Group | Name | Direction | Width | Description |
+| Signal Group | Name | Direction | Type | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **System** | `clk` | Input | 1 | System Clock (Rising Edge) |
-| | `rst` | Input | 1 | Synchronous Active-High Reset |
-| **Control** | `start_i` | Input | 1 | Pulse high to reset FSM and start new hash |
-| | `keccak_mode_i` | Input | 2 | `00`: SHA3-256, `01`: SHA3-512, `10`: SHAKE128, `11`: SHAKE256 |
-| | `stop_i` | Input | 1 | Stops output generation (Required for XOF modes) |
-| **AXI Sink** | `t_data_i` | Input | 256 | Input Message Data |
-| | `t_valid_i` | Input | 1 | Master Valid |
-| | `t_last_i` | Input | 1 | Assert high on the final chunk of the message |
-| | `t_keep_i` | Input | 32 | Byte Enable (1 bit per byte). `t_keep[0]` is LSB. |
-| | `t_ready_o` | Output | 1 | Slave Ready. Core pulls low when processing permutation. |
-| **AXI Source** | `t_data_o` | Output | 256 | Hash Output Data |
-| | `t_valid_o` | Output | 1 | Master Valid |
-| | `t_last_o` | Output | 1 | End of Hash (High for SHA3, Low for SHAKE) |
-| | `t_keep_o` | Output | 32 | Byte Enable for output data |
-| | `t_ready_i` | Input | 1 | Slave Ready (Backpressure from downstream) |
+| **System** | `clk` | Input | Wire | System Clock (Rising Edge) |
+| | `rst` | Input | Wire | Synchronous Active-High Reset |
+| **Control** | `start_i` | Input | Wire | Pulse high to reset FSM and start new hash |
+| | `keccak_mode_i` | Input | Wire | `00`: SHA3-256, `01`: SHA3-512, `10`: SHAKE128, `11`: SHAKE256 |
+| | `stop_i` | Input | Wire | Stops output generation (Required for XOF modes) |
+| **AXI Stream** | `s_axis` | Sink | Interface | **Slave Interface** (Input). Accepts Message Data. |
+| | `m_axis` | Source | Interface | **Master Interface** (Output). Outputs Hash Data. |
+
+### Interface Details (`axis_if`)
+
+The `s_axis` and `m_axis` ports utilize the `axis_if` SystemVerilog interface (located in `lib/common_rtl`). This bundles the standard AXI4-Stream signals as follows:
+
+| Interface Signal | Width | Function |
+| :--- | :--- | :--- |
+| `tdata` | `[DWIDTH-1:0]` | **Data Payload**. Contains the message chunk (Sink) or hash result (Source). |
+| `tvalid` | `1` | **Valid**. Asserted by the source when `tdata` is valid. |
+| `tready` | `1` | **Ready**. Asserted by the sink to indicate it can accept data (Backpressure). |
+| `tlast` | `1` | **Last**. Asserted to mark the final chunk of a message packet. |
+| `tkeep` | `[DWIDTH/8-1:0]` | **Keep**. Byte-enable mask indicating which bytes in `tdata` are valid. |
 
 ## 💻 Simulation & Verification
 
@@ -284,6 +303,9 @@ The repository is organized into RTL source, testbenches, and verification scrip
 ```text
 .
 ├── docs/                        # Architecture Diagrams & FSM Specs
+├── lib/
+│   └── common_rtl/              # Shared Git Submodule (AXI Interfaces)
+│       └── rtl/axis_if.sv
 ├── python_testing/              # Step-mapping Golden Models (Python)
 ├── rtl/                         # SystemVerilog Source Code
 │   ├── keccak_core.sv           # Top-level Module
@@ -292,12 +314,10 @@ The repository is organized into RTL source, testbenches, and verification scrip
 │   ├── keccak_absorb_unit.sv    # Input Buffering & XOR Logic
 │   ├── keccak_output_unit.sv    # Output Linearization & Squeeze
 │   ├── suffix_padder_unit.sv    # FIPS 202 Padding Logic
-│   ├── merge_sv.py              # Script to bundle RTL for Prompting
 │   └── *_step.sv                # Individual Step Modules (Chi, Rho, etc.)
 ├── tb/                          # SystemVerilog Testbenches
 │   ├── keccak_core_tb.sv        # Integration Testbench
 │   ├── keccak_core_heavy_tb.sv  # NIST Compliance Regression
-│   ├── run_heavy.py             # Python Automation Runner
 │   └── *_step_tb.sv             # Unit Testbenches for Sub-modules
 ├── verif/                       # NIST Compliance Suite
 │   ├── parse_nist_vectors.py    # .rsp to vectors.txt parser
