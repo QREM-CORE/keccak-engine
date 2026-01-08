@@ -69,24 +69,6 @@ The core follows a strict **Start → Absorb → Permute → Squeeze** lifecycle
 
 ⚠️ **Important:** `keccak_mode_i` must remain stable after `start_i` until the core returns to `STATE_IDLE`.
 
-## 🔌 AXI4-Stream Behavior Notes
-
-### Sink Interface (Input)
-* `t_ready_o` is deasserted while permutations are running
-* Data is only accepted when `t_valid_i && t_ready_o`
-* Input signals must remain stable while `t_ready_o` is low
-
-### Source Interface (Output)
-* `t_valid_o` is asserted only when downstream is ready
-* Output data, keep, and last remain stable under backpressure
-* SHAKE modes may produce unlimited output blocks
-
-## ⚠️ Integration Notes
-
-* **Latency & Backpressure:** The core deasserts `s_axis.tready` for 120 cycles during the permutation phase. Upstream buffers (FIFOs) must be sized to handle this pause if streaming continuously.
-* **SHAKE Infinite Stream:** In XOF modes (SHAKE128/256), the `m_axis` output stream is **infinite**. You *must* assert `stop_i` or drop `m_axis.tready` to halt data generation.
-* **Partial Bytes:** `s_axis.tkeep` is fully respected, allowing messages that are not 256-bit aligned.
-
 ## 🛠️ Architecture Overview
 
 ### Structural Data Path
@@ -166,8 +148,8 @@ enabling higher achievable clock frequencies compared to single-cycle designs.
 | **Control** | `start_i` | Input | Wire | Pulse high to reset FSM and start new hash |
 | | `keccak_mode_i` | Input | Wire | `00`: SHA3-256, `01`: SHA3-512, `10`: SHAKE128, `11`: SHAKE256 |
 | | `stop_i` | Input | Wire | Stops output generation (Required for XOF modes) |
-| **AXI Stream** | `s_axis` | Sink | Interface | **Slave Interface** (Input). Accepts Message Data. |
-| | `m_axis` | Source | Interface | **Master Interface** (Output). Outputs Hash Data. |
+| **AXI Stream** | `s_axis` | Sink | Interface | **Sink Interface** (Input). Accepts Message Data. |
+| | `m_axis` | Source | Interface | **Source Interface** (Output). Outputs Hash Data. |
 
 ### Interface Details (`axis_if`)
 
@@ -180,6 +162,12 @@ The `s_axis` and `m_axis` ports utilize the `axis_if` SystemVerilog interface (l
 | `tready` | `1` | **Ready**. Asserted by the sink to indicate it can accept data (Backpressure). |
 | `tlast` | `1` | **Last**. Asserted to mark the final chunk of a message packet. |
 | `tkeep` | `[DWIDTH/8-1:0]` | **Keep**. Byte-enable mask indicating which bytes in `tdata` are valid. |
+
+## ⚠️ Integration Notes
+
+* **Latency & Backpressure:** The core deasserts `s_axis.tready` for 120 cycles during the permutation phase. Upstream buffers (FIFOs) must be sized to handle this pause if streaming continuously.
+* **SHAKE Infinite Stream:** In XOF modes (SHAKE128/256), the `m_axis` output stream is **infinite**. You *must* assert `stop_i` or drop `m_axis.tready` to halt data generation.
+* **Partial Bytes:** `s_axis.tkeep` is fully respected, allowing messages that are not 256-bit aligned.
 
 ## 💻 Simulation & Verification
 
