@@ -77,7 +77,7 @@ module keccak_core_tb;
         rst = 1;
         start_i = 0;
         stop_i = 0;
-        
+
         // Reset Sink Interface Signals (Driver side)
         s_axis.tvalid = 0;
         s_axis.tlast  = 0;

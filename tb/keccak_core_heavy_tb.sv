@@ -44,7 +44,7 @@ module keccak_core_heavy_tb;
     // ---------------------------------------------------------------------
     // Instantiate the interface bundles.
     // NOTE: We use DWIDTH from keccak_pkg.
-    
+
     // Sink Interface (Input to Core)
     axis_if #(.DWIDTH(DWIDTH)) s_axis();
 
@@ -92,7 +92,7 @@ module keccak_core_heavy_tb;
         rst = 1;
         start_i = 0;
         stop_i = 0;
-        
+
         // Reset Sink Interface Signals
         s_axis.tvalid = 0;
         s_axis.tlast  = 0;
